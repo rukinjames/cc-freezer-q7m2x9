@@ -1,0 +1,1316 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Creamery">
+<meta name="theme-color" content="#f4f3f8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#110e1d" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<title>Campus Creamery Inventory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Unbounded:wght@500;600&display=swap">
+<style>
+/* Layout: phone is one column with a sticky bottom bar; laptop is two columns,
+   freezer and week on the left, today's orders and mix-ins on the right.
+   The freezer lids are the one bold element; everything else stays quiet. */
+:root {
+  --ground: #f4f3f8;
+  --surface: #ffffff;
+  --ink: #1c1631;
+  --muted: #67607d;
+  --rule: #e2dfea;
+  --rule-strong: #c9c4d8;
+  --accent: #5a34d0;
+  --accent-ink: #ffffff;
+  --accent-soft: #eee8fd;
+  --well: #dfe9f0;
+  --steel: #c3cfd9;
+  --tub-empty: #f3f7fa;
+  --van: #f2d488; --van-rim: #c7a44a;
+  --choc: #6a4130; --choc-rim: #452a1d;
+  --mint: #82cbae; --mint-rim: #3f8f6f;
+  --now: #bf3328; --now-soft: #fbe6e3;
+  --soon: #985b00; --soon-soft: #fbefd9;
+  --ok: #2d7a4f; --ok-soft: #e3f2e9;
+  --display: "Unbounded", "Avenir Next", "Futura", system-ui, sans-serif;
+  --text: "Instrument Sans", "Helvetica Neue", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --ground: #110e1d; --surface: #1a1629; --ink: #edeaf7; --muted: #a29bbb; --rule: #2c2642; --rule-strong: #453d61;
+  --accent: #a88dff; --accent-ink: #160f2e; --accent-soft: #261e47; --well: #172230; --steel: #2b3644; --tub-empty: #0f1720;
+  --van: #e8cc7d; --van-rim: #b8963f; --choc: #a4725b; --choc-rim: #d09a80; --mint: #78c9a9; --mint-rim: #a5e2c9;
+  --now: #f27d72; --now-soft: #3a1915; --soon: #e5aa4c; --soon-soft: #33260f; --ok: #6fcb96; --ok-soft: #132e1f;
+  color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --ground: #110e1d; --surface: #1a1629; --ink: #edeaf7; --muted: #a29bbb; --rule: #2c2642; --rule-strong: #453d61;
+  --accent: #a88dff; --accent-ink: #160f2e; --accent-soft: #261e47; --well: #172230; --steel: #2b3644; --tub-empty: #0f1720;
+  --van: #e8cc7d; --van-rim: #b8963f; --choc: #a4725b; --choc-rim: #d09a80; --mint: #78c9a9; --mint-rim: #a5e2c9;
+  --now: #f27d72; --now-soft: #3a1915; --soon: #e5aa4c; --soon-soft: #33260f; --ok: #6fcb96; --ok-soft: #132e1f;
+  color-scheme: dark; }
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { background: var(--ground); color: var(--ink); font-family: var(--text); font-size: 16px; line-height: 1.45; margin: 0; }
+button, input, select, textarea { font: inherit; color: inherit; }
+h1, h2, h3, p { margin: 0; }
+h2 { font-size: 1.06rem; font-weight: 600; letter-spacing: -0.005em; text-wrap: balance; }
+h3 { font-size: 0.98rem; font-weight: 600; }
+.muted { color: var(--muted); }
+.small { font-size: 0.875rem; }
+.tnum { font-variant-numeric: tabular-nums; }
+.disp { font-family: var(--display); font-weight: 500; letter-spacing: -0.02em; }
+
+.shell { max-width: 1120px; margin: 0 auto; padding-inline: 16px; padding-block: 14px 110px; }
+.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 6px 18px; }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.mark { width: 38px; height: 38px; flex: none; }
+.wordmark { font-family: var(--display); font-weight: 600; font-size: 1.08rem; letter-spacing: -0.02em; line-height: 1.1; }
+.status { font-size: 0.875rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+.dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); margin-right: 6px; vertical-align: 1px; }
+.dot.ok { background: var(--ok); } .dot.bad { background: var(--now); } .dot.wait { background: var(--soon); }
+.top-actions { display: none; gap: 8px; }
+
+.btn { cursor: pointer; border: 1px solid var(--rule-strong); background: var(--surface); border-radius: 12px; padding: 10px 16px; min-height: 44px; font-weight: 600; font-size: 0.95rem; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.quiet { background: transparent; border-color: transparent; color: var(--accent); padding-inline: 6px; min-height: 36px; }
+.btn:disabled { opacity: 0.45; cursor: default; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+
+.grid { display: flex; flex-direction: column; gap: 30px; }
+.col { display: contents; }
+.section { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+
+/* freezer */
+.freezer { background: var(--steel); border-radius: 26px; padding: 10px; }
+.freezer-well { background: var(--well); border-radius: 18px; padding: 12px; display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 8px; box-shadow: inset 0 2px 0 rgba(0, 0, 0, 0.06); }
+.lid { display: block; width: 100%; aspect-ratio: 1; max-width: 100%; }
+.readout { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+.readout .big { font-family: var(--display); font-size: 2.5rem; font-weight: 500; line-height: 1; letter-spacing: -0.04em; }
+.readout .big span { font-family: var(--text); font-size: 1rem; letter-spacing: 0; color: var(--muted); font-weight: 500; margin-left: 6px; }
+.meter { display: grid; grid-template-columns: repeat(var(--cap), 1fr); gap: 3px; position: relative; padding-top: 18px; }
+.seg { height: 10px; border-radius: 3px; background: var(--rule); overflow: hidden; position: relative; }
+.seg i { position: absolute; inset: 0 auto 0 0; background: var(--ink); opacity: 0.82; }
+.meter .floormark { position: absolute; top: 0; font-size: 0.75rem; color: var(--accent); white-space: nowrap; transform: translateX(-50%); }
+.meter .floormark::after { content: ""; position: absolute; left: 50%; top: 15px; width: 2px; height: 16px; background: var(--accent); }
+.tallies { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0; border-top: 1px solid var(--rule); }
+.tally { padding: 12px 12px 4px 0; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tally .name { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.swatch { width: 12px; height: 12px; border-radius: 50%; flex: none; border: 2px solid; }
+.tally .n { font-family: var(--display); font-size: 1.7rem; font-weight: 500; letter-spacing: -0.03em; line-height: 1.15; }
+.tally .n small { font-family: var(--text); font-size: 0.9rem; color: var(--muted); letter-spacing: 0; margin-left: 4px; }
+.tally .sub { font-size: 0.8rem; color: var(--muted); }
+
+/* order panels */
+.panel { border-radius: 18px; padding: 18px; display: flex; flex-direction: column; gap: 14px; background: var(--surface); border: 1px solid var(--rule); }
+.panel.act { background: var(--accent-soft); border-color: transparent; }
+.panel .lead { font-size: 1.28rem; font-weight: 600; letter-spacing: -0.01em; line-height: 1.25; text-wrap: balance; }
+.when-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: var(--surface); }
+.lines { display: flex; flex-direction: column; }
+.line { display: grid; grid-template-columns: 2.6rem minmax(0, 1fr) auto; gap: 12px; align-items: baseline; padding: 10px 0; border-top: 1px solid var(--rule-strong); }
+.panel:not(.act) .line { border-top-color: var(--rule); }
+.line .q { font-family: var(--display); font-size: 1.45rem; font-weight: 500; letter-spacing: -0.03em; text-align: right; }
+.line .what { min-width: 0; }
+.line .code { font-size: 0.8rem; color: var(--muted); }
+.line .cost { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 0.92rem; }
+.sum { display: flex; justify-content: space-between; font-weight: 600; padding-top: 10px; border-top: 1px solid var(--rule-strong); }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.note { font-size: 0.875rem; color: var(--muted); }
+.flag { border-radius: 12px; padding: 11px 13px; font-size: 0.92rem; display: flex; flex-direction: column; gap: 8px; }
+.flag.now { background: var(--now-soft); color: var(--ink); border-left: 0; box-shadow: inset 0 0 0 1px var(--now); }
+.flag.soon { background: var(--soon-soft); box-shadow: inset 0 0 0 1px var(--soon); }
+.flag.ok { background: var(--ok-soft); box-shadow: inset 0 0 0 1px var(--ok); }
+
+/* week */
+.week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; position: relative; }
+.plot { position: relative; height: 150px; margin-top: 18px; grid-column: 1 / -1; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; align-items: end; border-bottom: 1px solid var(--rule-strong); }
+.bar { position: relative; display: flex; flex-direction: column-reverse; align-items: stretch; height: 100%; justify-content: flex-start; }
+.bar .stack { display: flex; flex-direction: column-reverse; width: 62%; margin: 0 auto; border-radius: 6px 6px 0 0; overflow: hidden; }
+.bar .stack b { display: block; }
+.bar .lbl { position: absolute; left: 0; right: 0; text-align: center; font-size: 0.78rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.bar .fl { position: absolute; left: 6%; right: 6%; height: 0; border-top: 2px dotted var(--accent); }
+.bar .after { position: absolute; left: 12%; right: 12%; height: 2px; background: var(--ink); }
+.hline { position: absolute; left: 0; right: 0; height: 0; border-top: 1.5px dashed; pointer-events: none; }
+.hline span { position: absolute; left: 0; top: -1.3em; font-size: 0.72rem; background: var(--ground); padding-right: 4px; }
+.hline.cap { border-color: var(--now); } .hline.cap span { color: var(--now); }
+.hline.floor { border-color: var(--accent); } .hline.floor span { color: var(--accent); }
+.days { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; text-align: center; font-size: 0.8rem; }
+.days div { display: flex; flex-direction: column; gap: 1px; }
+.days strong { font-weight: 600; }
+.days .arr { color: var(--ok); font-weight: 600; }
+
+/* pantry */
+.shelf { display: flex; flex-direction: column; gap: 4px; }
+.shelf-name { font-size: 0.82rem; font-weight: 600; color: var(--muted); margin-top: 10px; }
+.goods { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; }
+.good { display: grid; grid-template-columns: minmax(4.5rem, auto) minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--rule); }
+.pkgs { display: flex; align-items: flex-end; gap: 3px; min-height: 30px; }
+.pkg { width: 16px; height: 24px; flex: none; }
+.pkgs .more { font-size: 0.75rem; color: var(--muted); margin-left: 2px; }
+.good .nm { font-weight: 600; line-height: 1.2; }
+.good .meta { font-size: 0.82rem; color: var(--muted); }
+.good .right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; text-align: right; }
+.good .amt { font-variant-numeric: tabular-nums; font-size: 0.92rem; }
+@media (min-width: 640px) and (max-width: 959px) { .goods { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 28px; } }
+/* mix-ins */
+.items { display: flex; flex-direction: column; }
+.item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; padding: 11px 0; border-top: 1px solid var(--rule); align-items: center; }
+.item .nm { font-weight: 600; min-width: 0; }
+.item .meta { font-size: 0.82rem; color: var(--muted); grid-column: 1; }
+.item .qty { text-align: right; font-variant-numeric: tabular-nums; grid-row: 1; grid-column: 2; }
+.item .st { grid-column: 2; justify-self: end; }
+.pill { display: inline-flex; align-items: center; font-size: 0.78rem; font-weight: 600; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+.pill.now { background: var(--now-soft); color: var(--now); }
+.pill.soon { background: var(--soon-soft); color: var(--soon); }
+.pill.ok { background: var(--ok-soft); color: var(--ok); }
+details.more { border-top: 1px solid var(--rule); padding-top: 10px; }
+details.more summary { cursor: pointer; font-weight: 600; color: var(--accent); list-style: none; min-height: 32px; display: flex; align-items: center; }
+details.more summary::-webkit-details-marker { display: none; }
+details.more p { margin-top: 6px; font-size: 0.9rem; color: var(--muted); }
+
+.log { display: flex; flex-direction: column; }
+.log div { padding: 8px 0; border-top: 1px solid var(--rule); font-size: 0.9rem; display: grid; grid-template-columns: 6.6rem minmax(0, 1fr); gap: 10px; }
+.log time { color: var(--muted); font-variant-numeric: tabular-nums; }
+.empty { border: 1.5px dashed var(--rule-strong); border-radius: 14px; padding: 16px; color: var(--muted); }
+.foot { margin-top: 36px; font-size: 0.82rem; color: var(--muted); max-width: 70ch; }
+.alerts { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
+.alerts:empty { display: none; }
+
+/* bottom bar (phone) */
+.bar-bottom { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; background: var(--surface); border-top: 1px solid var(--rule); padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px)); display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 8px; }
+.bar-bottom .btn { width: 100%; padding-inline: 8px; }
+
+/* sheets */
+.scrim { position: fixed; inset: 0; background: rgba(12, 8, 26, 0.5); z-index: 10; display: flex; align-items: flex-end; justify-content: center; }
+.sheet { background: var(--surface); width: 100%; max-width: 560px; max-height: 92vh; max-height: 92dvh; border-radius: 22px 22px 0 0; display: flex; flex-direction: column; }
+.sheet header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 16px 18px 12px; border-bottom: 1px solid var(--rule); }
+.sheet header h2 { font-size: 1.15rem; }
+.sheet .body { overflow-y: auto; padding: 6px 18px 18px; -webkit-overflow-scrolling: touch; }
+.sheet footer { padding: 12px 18px calc(12px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--rule); display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.grp { margin-top: 16px; font-size: 0.82rem; font-weight: 600; color: var(--muted); }
+.crow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 0; border-top: 1px solid var(--rule); }
+.crow.touched .cname::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); margin-right: 8px; vertical-align: 1px; }
+.cname { font-weight: 600; }
+.csub { font-size: 0.8rem; color: var(--muted); }
+.stepper { display: flex; align-items: center; gap: 6px; }
+.stepper button { width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--rule-strong); background: var(--ground); cursor: pointer; font-size: 1.3rem; line-height: 1; }
+.stepper .v { min-width: 3.4ch; text-align: center; font-family: var(--display); font-size: 1.2rem; font-weight: 500; }
+.field { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 0; border-top: 1px solid var(--rule); }
+input[type="number"], input[type="date"], input[type="password"], input[type="text"], select { padding: 9px 11px; border-radius: 10px; border: 1px solid var(--rule-strong); background: var(--ground); min-height: 44px; font-size: 1rem; }
+input[type="number"] { width: 6.5em; font-variant-numeric: tabular-nums; }
+.toggle { display: inline-flex; align-items: center; gap: 10px; font-weight: 600; }
+.toggle input { width: 22px; height: 22px; accent-color: var(--accent); }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(86px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--ground); padding: 11px 16px; border-radius: 12px; font-weight: 600; z-index: 20; max-width: calc(100% - 32px); }
+
+/* passcode */
+.gate { min-height: 100vh; min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
+.gate form { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 14px; }
+.gate input { width: 100%; font-size: 1.2rem; letter-spacing: 0.08em; }
+
+@media (min-width: 720px) {
+  .scrim { align-items: center; }
+  .sheet { border-radius: 22px; max-height: 86vh; }
+  .toast { bottom: 24px; }
+}
+@media (min-width: 960px) {
+  .shell { padding-block: 24px 48px; }
+  .top-actions { display: flex; }
+  .bar-bottom { display: none; }
+  .grid { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 36px 44px; align-items: start; }
+  .col { display: flex; flex-direction: column; gap: 32px; min-width: 0; }
+  #activity { grid-column: 1 / -1; }
+  .freezer-well { gap: 12px; padding: 18px; }
+  .readout .big { font-size: 3rem; }
+}
+@media (max-width: 380px) { .freezer-well { gap: 5px; padding: 9px; } .freezer { padding: 7px; } }
+@media (prefers-reduced-motion: no-preference) { .lid .wedge { transition: d 0.4s ease; } .seg i { transition: width 0.4s ease; } }
+
+body { padding-top: env(safe-area-inset-top, 0px); }
+</style>
+</head>
+<body>
+<div id="root">
+  <div class="shell" id="shell">
+    <header class="top">
+      <div class="brand">
+        <svg class="mark" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="18" fill="var(--accent)"/><circle cx="20" cy="20" r="12.5" fill="var(--van)"/><path d="M20 20 L20 7.5 A12.5 12.5 0 0 1 32.5 20 Z" fill="var(--choc)"/></svg>
+        <div>
+          <div class="wordmark">Campus Creamery</div>
+          <div class="status" id="status">Loading…</div>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button class="btn primary" data-act="open-count">Count</button>
+        <button class="btn" data-act="open-delivery">Add delivery</button>
+        <button class="btn" data-act="open-settings">Settings</button>
+      </div>
+    </header>
+    <div class="alerts" id="alerts"></div>
+    <div class="grid">
+      <div class="col">
+        <section class="section" id="freezer" style="order:1"><div class="empty">Loading your counts…</div></section>
+        <section class="section" id="pantry" style="order:4"></section>
+        <section class="section" id="week" style="order:5"></section>
+      </div>
+      <div class="col">
+        <section class="section" id="gordon" style="order:2"></section>
+        <section class="section" id="sams" style="order:3"></section>
+      </div>
+      <section class="section" id="activity" style="order:7"></section>
+    </div>
+    <p class="foot">Not tracked here: Cookie Crisp, Biscoff, Nutella, cups and Dairy Free. Square sales arrive about every 15 minutes. Servings per tub and mix-in amounts adjust a little with every count.</p>
+  </div>
+  <nav class="bar-bottom" aria-label="Actions">
+    <button class="btn primary" data-act="open-count">Count</button>
+    <button class="btn" data-act="open-delivery">Delivery</button>
+    <button class="btn" data-act="open-settings">Settings</button>
+  </nav>
+</div>
+<div id="sheetRoot"></div>
+<div id="toastRoot"></div>
+
+<script>
+/* Campus Creamery inventory engine: pure functions, no I/O.
+   Used inline by the app page and tested in node. */
+const Engine = (() => {
+  const TZ = "America/Chicago";
+  const DAY_START_HOUR = 4; // Square reporting day starts at 4 AM
+
+  // ---------- catalog ----------
+  // perUnit: usage units in one counted unit. Usage units are servings,
+  // except Oreos (cookies) and cans. pack: counted units per thing you buy.
+  const CATALOG = [
+    { key: "vanilla", name: "Vanilla", group: "ice", unit: "tub", supplier: "gordon", code: "788805", pack: 1, price: 31.79, step: 0.25 },
+    { key: "chocolate", name: "Chocolate", group: "ice", unit: "tub", supplier: "gordon", code: "442683", pack: 1, price: 31.79, step: 0.25 },
+    { key: "exclusive", name: "Exclusive", group: "ice", unit: "tub", supplier: "gordon", code: "", pack: 1, price: 0, step: 0.25 },
+    { key: "oreos", name: "Oreos", group: "mix", shelf: "cookies", color: "#2f2a3a", unit: "box", unitNote: "156 cookies", perUnit: 156, supplier: "sams", buy: "OREO 12-pack, 156 cookies", pack: 1, price: 10.98, step: 0.25 },
+    { key: "brownies", name: "Brownies", group: "mix", shelf: "cookies", color: "#5b3a2a", unit: "serving", perUnit: 1, supplier: "sams", buy: "Little Debbie Cosmic Brownies, 24 ct (48 servings)", pack: 48, price: 10.48, step: 1 },
+    { key: "strawberries", name: "Strawberries", group: "mix", shelf: "fruit", color: "#d2475a", unit: "bag", unitNote: "4 lb", perUnit: 51, supplier: "sams", buy: "Member's Mark Sliced Strawberries, 4 lb", pack: 1, price: 7.98, step: 0.25 },
+    { key: "blueberries", name: "Blueberries", group: "mix", shelf: "fruit", color: "#4a5fb8", unit: "bag", unitNote: "4 lb", perUnit: 71, supplier: "sams", buy: "Member's Mark Blueberries, 64 oz", pack: 1, price: 9.17, step: 0.25 },
+    { key: "bananas", name: "Bananas", group: "mix", shelf: "fruit", color: "#e2c14a", unit: "bag", unitNote: "5 lb", perUnit: 64, supplier: "gordon", code: "600645", buy: "Sliced frozen bananas, 5 lb", pack: 1, price: 13.56, step: 0.25 },
+    { key: "ctc", name: "Cinnamon Toast Crunch", group: "mix", shelf: "cereal", color: "#c98a3e", unit: "box", unitNote: "49.5 oz", perUnit: 108, supplier: "sams", buy: "Cinnamon Toast Crunch, 49.5 oz", pack: 1, price: 7.98, step: 0.25 },
+    { key: "fruitypebbles", name: "Fruity Pebbles", group: "mix", shelf: "cereal", color: "#d9608f", unit: "box", unitNote: "38 oz", perUnit: 84, supplier: "sams", buy: "Fruity Pebbles, 38 oz", pack: 1, price: 6.48, step: 0.25 },
+    { key: "capncrunch", name: "Cap'n Crunch", group: "mix", shelf: "cereal", color: "#3d6fd1", unit: "box", unitNote: "40 oz", perUnit: 94, supplier: "sams", buy: "Cap'n Crunch's Crunch Berries, 40 oz", pack: 1, price: 5.98, step: 0.25 },
+    { key: "reesespuffs", name: "Reese's Puffs", group: "mix", shelf: "cereal", color: "#e07a2c", unit: "box", unitNote: "51.4 oz", perUnit: 114, supplier: "sams", buy: "Reese's Puffs, 51.4 oz", pack: 1, price: 7.98, step: 0.25 },
+    { key: "cocoapuffs", name: "Cocoa Puffs", group: "mix", shelf: "cereal", color: "#7a4a33", unit: "box", unitNote: "39.25 oz", perUnit: 87, supplier: "sams", buy: "Cocoa Puffs, 39.25 oz", pack: 1, price: 6.48, step: 0.25 },
+    { key: "frootloops", name: "Froot Loops", group: "mix", shelf: "cereal", color: "#c94f9d", unit: "box", unitNote: "43.6 oz", perUnit: 97, supplier: "sams", buy: "Froot Loops, 43.6 oz", pack: 1, price: 8.58, step: 0.25 },
+    { key: "frostedflakes", name: "Frosted Flakes", group: "mix", shelf: "cereal", color: "#2f8fd0", unit: "box", unitNote: "55 oz", perUnit: 122, supplier: "sams", buy: "Frosted Flakes, 55 oz", pack: 1, price: 7.88, step: 0.25 },
+    { key: "honeynut", name: "Honey Nut Cheerios", group: "mix", shelf: "cereal", color: "#e3b23c", unit: "box", unitNote: "48 oz", perUnit: 107, supplier: "sams", buy: "Honey Nut Cheerios, 48 oz", pack: 1, price: 7.64, step: 0.25 },
+    { key: "graham", name: "Graham crackers", group: "mix", shelf: "cookies", color: "#b9874f", unit: "box", unitNote: "4-pack", perUnit: 65, supplier: "sams", buy: "Honey Maid Graham Crackers, 4-pack", pack: 1, price: 8.98, step: 0.25 },
+    { key: "matcha", name: "Matcha", group: "mix", shelf: "other", color: "#6f9a4a", unit: "bag", unitNote: "14.1 oz", perUnit: 110, supplier: "sams", buy: "Jade Leaf Matcha Latte Mix, 14.1 oz", pack: 1, price: 19.48, step: 0.25 },
+    { key: "granola", name: "Granola", group: "mix", shelf: "other", color: "#b08a52", unit: "bag", unitNote: "32 oz", perUnit: 50, supplier: "sams", buy: "Member's Mark Honey Almond Granola, 32 oz", pack: 1, price: 6.56, step: 0.25 },
+    { key: "spoons", name: "Spoons", group: "supply", shelf: "supply", color: "#9aa3ad", unit: "box", unitNote: "600", perUnit: 600, supplier: "sams", buy: "Member's Mark Heavyweight Spoons, 600 ct", pack: 1, price: 16.82, step: 0.25 },
+    { key: "coke", name: "Coke for floats", group: "supply", shelf: "supply", color: "#c4302b", unit: "can", perUnit: 1, supplier: "sams", buy: "Coca-Cola 12 oz cans, 35 pack", pack: 35, price: 20.38, step: 1 },
+    { key: "rootbeer", name: "Root beer for floats", group: "supply", shelf: "supply", color: "#7b4b2a", unit: "can", perUnit: 1, supplier: "sams", buy: "Mug Root Beer mini cans, 30 pack", pack: 30, price: 15.48, step: 1 },
+  ];
+  const BY_KEY = Object.fromEntries(CATALOG.map(c => [c.key, c]));
+  const ICE = ["vanilla", "chocolate", "exclusive"];
+  const SUPPLIER = { gordon: "Gordon's", sams: "Sam's Club" };
+  const EXCLUSIVE_OPTIONS = [
+    { name: "Mint Chocolate Chip", code: "442845", price: 42.28 },
+    { name: "Moose Tracks", code: "724173", price: 40.79 },
+  ];
+
+  const MIX_MAP = {
+    "Oreo's": "oreos", "Brownie Bites": "brownies", "Frozen Strawberries": "strawberries",
+    "Frozen Blueberries": "blueberries", "Frozen Bananas": "bananas", "Cinnamon Toast Crunch": "ctc",
+    "Fruity Pebbles": "fruitypebbles", "Cap'n Crunch": "capncrunch", "Reece's Puffs": "reesespuffs",
+    "Reese's Puffs": "reesespuffs", "Cocoa Puffs": "cocoapuffs", "Froot Loops": "frootloops",
+    "Frosted Flakes": "frostedflakes", "Honey Nut Cheerios": "honeynut", "Graham Crackers": "graham",
+    "Matcha": "matcha", "Granola": "granola",
+  };
+  const MANUAL = new Set(["Cookie Crisp", "Biscoff", "Nutella", "Dairy Free Vanilla", "Cone"]);
+  const BASE_MAP = { "Vanilla": "vanilla", "Chocolate": "chocolate", "Exclusive": "exclusive" };
+
+  function usageOfRow(list, mod, item, qty) {
+    const out = {};
+    if (list === "Ice Cream Base") {
+      out.spoons = qty;
+      if (BASE_MAP[mod]) out[BASE_MAP[mod]] = qty;
+      else if (!MANUAL.has(mod)) return { items: out, unmapped: mod };
+      return { items: out, unmapped: null };
+    }
+    if (list === "Mix-In's") {
+      if (mod === "Oreo's") { out.oreos = qty * (/mini/i.test(item || "") ? 2 : 3); return { items: out, unmapped: null }; }
+      if (MIX_MAP[mod]) { out[MIX_MAP[mod]] = qty; return { items: out, unmapped: null }; }
+      return { items: out, unmapped: MANUAL.has(mod) ? null : mod };
+    }
+    if (list === "Drink") {
+      if (mod === "Coke") out.coke = qty; else if (mod === "Root Beer") out.rootbeer = qty;
+    }
+    return { items: out, unmapped: null };
+  }
+
+  // ---------- time ----------
+  const fmtParts = new Intl.DateTimeFormat("en-US", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
+  function parts(date) { return Object.fromEntries(fmtParts.formatToParts(date).map(p => [p.type, p.value])); }
+  function localStamp(date) { const p = parts(date); return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}`; }
+  function businessDate(date) { const p = parts(new Date(date.getTime() - DAY_START_HOUR * 3600e3)); return `${p.year}-${p.month}-${p.day}`; }
+  function addDays(ds, n) { const d = new Date(ds + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+  function weekday(ds) { return new Date(ds + "T12:00:00Z").getUTCDay(); }
+  const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const DOW_LONG = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  function stampBusinessDate(stamp) { const d = stamp.slice(0, 10), h = +stamp.slice(11, 13); return h < DAY_START_HOUR ? addDays(d, -1) : d; }
+
+  // ---------- formatting ----------
+  const FRAC = { 0: "", 1: "¼", 2: "½", 3: "¾" };
+  function quarter(x) { return Math.round(x * 4) / 4; }
+  function fmtQ(x) {
+    if (x == null || isNaN(x)) return "–";
+    const q = quarter(x), neg = q < 0, a = Math.abs(q), whole = Math.floor(a), f = Math.round((a - whole) * 4);
+    const s = (whole === 0 && f ? "" : String(whole)) + FRAC[f];
+    return (neg ? "−" : "") + (s || "0");
+  }
+  function fmtUnits(key, x) {
+    const c = BY_KEY[key];
+    if (x == null) return "Not counted";
+    if (c.unit === "serving") return `${Math.max(0, Math.round(x))} servings`;
+    if (c.unit === "can") return `${Math.max(0, Math.round(x))} cans`;
+    const q = quarter(Math.max(0, x));
+    return `${fmtQ(q)} ${c.unit}${q === 1 ? "" : (c.unit === "box" ? "es" : "s")}`;
+  }
+
+  // ---------- Square rows -> tables ----------
+  function dailyTables(rows) {
+    const base = {}, usage = {};
+    for (const r of rows) {
+      const b = (base[r.day] ||= { vanilla: 0, chocolate: 0, exclusive: 0, any: 0 });
+      if (r.list === "Ice Cream Base") { b.any += r.qty; if (BASE_MAP[r.mod]) b[BASE_MAP[r.mod]] += r.qty; }
+      const u = usageOfRow(r.list, r.mod, r.item, r.qty).items, d = (usage[r.day] ||= {});
+      for (const k in u) d[k] = (d[k] || 0) + u[k];
+    }
+    return { base, usage };
+  }
+  function usageSince(hourlyRows, sinceStamp) {
+    const sinceHour = sinceStamp.slice(0, 13) + ":00:00", min = +sinceStamp.slice(14, 16);
+    const out = {}, unmapped = new Set();
+    for (const r of hourlyRows) {
+      if (r.hour < sinceHour || (r.hour === sinceHour && min >= 30)) continue;
+      const { items, unmapped: u } = usageOfRow(r.list, r.mod, r.item, r.qty);
+      if (u) unmapped.add(u);
+      for (const k in items) out[k] = (out[k] || 0) + items[k];
+    }
+    return { usage: out, unmapped: [...unmapped] };
+  }
+  const perUnit = (key, st) => ICE.includes(key) ? st.yields[key] : BY_KEY[key].perUnit;
+  const adjust = (key, st) => (st.adjust && st.adjust[key]) || 1;
+
+  function estimates(counts, deliveries, hourlyRows, st) {
+    const latest = {};
+    for (const c of counts) if (!latest[c.item] || c.at > latest[c.item].at) latest[c.item] = c;
+    const out = {}, unmapped = new Set();
+    for (const cat of CATALOG) {
+      const c = latest[cat.key];
+      if (!c) { out[cat.key] = null; continue; }
+      const { usage, unmapped: um } = usageSince(hourlyRows, localStamp(new Date(c.at)));
+      um.forEach(u => unmapped.add(u));
+      const delivered = deliveries.filter(d => d.item === cat.key && d.at > c.at).reduce((s, d) => s + d.qty, 0);
+      const used = (usage[cat.key] || 0) * adjust(cat.key, st) / perUnit(cat.key, st);
+      out[cat.key] = { value: c.value + delivered - used, counted: c.value, countedAt: c.at, delivered, used, usedRaw: usage[cat.key] || 0 };
+    }
+    return { stock: out, unmapped: [...unmapped] };
+  }
+
+  // ---------- forecasting ----------
+  function isClosed(ds, base, st, today) {
+    if ((st.closedDates || []).includes(ds)) return true;
+    if (ds < today) return !(base[ds] && base[ds].any > 0);
+    return false;
+  }
+  function openDays(base, today, n) { return Object.keys(base).filter(d => d < today && base[d].any > 0).sort().slice(-n); }
+  // Ice cream tubs for one night: hi = busiest of the last 3 same weekdays, lo = 80% of the slowest
+  function forecastNight(ds, base, st, today) {
+    const zero = { vanilla: 0, chocolate: 0, exclusive: 0 };
+    if (isClosed(ds, base, st, today)) return { hi: zero, lo: zero, mean: zero, closed: true };
+    const past = Object.keys(base).filter(d => d < today && weekday(d) === weekday(ds) && base[d].any > 0).sort().slice(-3);
+    const hi = {}, lo = {}, mean = {};
+    for (const f of ICE) {
+      const y = st.yields[f];
+      if (past.length) { const t = past.map(d => base[d][f] / y); hi[f] = Math.max(...t); lo[f] = 0.8 * Math.min(...t); mean[f] = t.reduce((a, b) => a + b, 0) / t.length; }
+      else { const r = openDays(base, today, 7); const m = r.length ? r.reduce((s, d) => s + base[d][f], 0) / r.length / y : 0; hi[f] = 1.5 * m; lo[f] = 0.5 * m; mean[f] = m; }
+    }
+    return { hi, lo, mean, closed: false };
+  }
+  // Mix-in counted units for one night, by weekday
+  function mixNight(key, ds, base, usage, st, today) {
+    if (isClosed(ds, base, st, today)) return { hi: 0, mean: 0 };
+    const k = adjust(key, st) / perUnit(key, st);
+    const past = Object.keys(base).filter(d => d < today && weekday(d) === weekday(ds) && base[d].any > 0).sort().slice(-3);
+    if (past.length) { const t = past.map(d => ((usage[d] || {})[key] || 0) * k); return { hi: Math.max(...t), mean: t.reduce((a, b) => a + b, 0) / t.length }; }
+    const r = openDays(base, today, 14); const m = r.length ? r.reduce((s, d) => s + ((usage[d] || {})[key] || 0), 0) / r.length * k : 0;
+    return { hi: 1.5 * m, mean: m };
+  }
+
+  // ---------- floors ----------
+  const THU_SAT = new Set([4, 5, 6]);
+  function nightFloor(ds, st) { return THU_SAT.has(weekday(ds)) ? st.floors.thuSat : st.floors.sunWed; }
+  function shares(base, st, today) {
+    let v = 0, c = 0;
+    for (const d of openDays(base, today, 14)) { v += base[d].vanilla / st.yields.vanilla; c += base[d].chocolate / st.yields.chocolate; }
+    const t = v + c; return t ? { vanilla: v / t, chocolate: c / t } : { vanilla: 0.7, chocolate: 0.3 };
+  }
+  function flavorFloors(total, sh) { const c = Math.max(1, quarter(total * sh.chocolate)); return { vanilla: Math.max(1, total - c), chocolate: c }; }
+
+  // ---------- Gordon's (ice cream), same-day delivery ----------
+  // nowStamp: local "YYYY-MM-DDTHH:mm:ss". pending: [{arrivesOn, lines}] placed, not yet arrived.
+  function planGordon({ stock, soldTonight, pending, base, settings: st, nowStamp }) {
+    const cal = nowStamp.slice(0, 10), hm = nowStamp.slice(11, 16), biz = stampBusinessDate(nowStamp);
+    const late = st.gordon.windows[st.gordon.windows.length - 1];
+    const A0 = hm < late.cutoff ? cal : addDays(cal, 1);
+    const exOn = !!(st.exclusive && st.exclusive.active), exT = exOn ? (st.exclusive.target || 2) : 0;
+    const core = ["vanilla", "chocolate"], sh = shares(base, st, biz);
+    const fc = d => forecastNight(d, base, st, biz);
+    const sold = soldTonight || {};
+    const rem = (d, which, f) => d === biz ? Math.max(0, fc(d)[which][f] - (sold[f] || 0) / st.yields[f]) : fc(d)[which][f];
+    const sumLines = list => { const t = {}; for (const o of list) for (const k in (o.lines || {})) t[k] = (t[k] || 0) + (+o.lines[k] || 0); return t; };
+    const before = sumLines((pending || []).filter(o => o.arrivesOn < A0));
+    const atA0 = sumLines((pending || []).filter(o => o.arrivesOn === A0));
+    const nightsBefore = []; for (let d = biz; d < A0; d = addDays(d, 1)) nightsBefore.push(d);
+    const S = {}; for (const f of ICE) S[f] = (stock[f] || 0) + (before[f] || 0);
+    const res = { arriveOn: A0, sameDay: A0 === cal, windows: st.gordon.windows.filter(w => A0 !== cal || hm < w.cutoff), urgent: [], reasons: [] };
+
+    // Nights before the earliest possible delivery: can only warn
+    let run = { ...S };
+    for (const d of nightsBefore) {
+      for (const f of ICE) run[f] -= rem(d, "hi", f);
+      const fl = flavorFloors(nightFloor(d, st), sh);
+      core.forEach(f => { if (run[f] < fl[f] && !res.urgent.includes(f)) res.urgent.push(f); });
+    }
+    const arrive = {}; for (const f of ICE) arrive[f] = Math.max(0, S[f] - nightsBefore.reduce((s, d) => s + rem(d, "lo", f), 0));
+
+    if (ICE.some(f => (atA0[f] || 0) > 0)) {
+      res.mode = "ordered"; res.atArrival = ICE.reduce((s, f) => s + arrive[f] + (atA0[f] || 0), 0);
+      if (res.atArrival > st.cap + 0.01) {
+        const over = Math.ceil(res.atArrival - st.cap - 1e-9);
+        res.trim = { over, flavor: ICE.filter(f => atA0[f] > 0).sort((a, b) => atA0[b] - atA0[a])[0] };
+      }
+      return res;
+    }
+    // Skip A0 and the next truck comes A0+1: stock must get through night A0 above its floor
+    const endA0 = {}; for (const f of ICE) endA0[f] = run[f] + (nightsBefore.length ? 0 : 0) - fc(A0).hi[f];
+    const flA0 = flavorFloors(nightFloor(A0, st), sh);
+    const short = core.filter(f => endA0[f] < flA0[f]);
+    const exShort = exOn && endA0.exclusive < 0.5;
+    res.endA0 = endA0; res.floorA0 = flA0;
+    if (!short.length && !exShort) { res.mode = "none"; return res; }
+    const dname = DOW_LONG[weekday(A0)];
+    short.forEach(f => res.reasons.push(`${BY_KEY[f].name} would end ${dname} night under ${fmtQ(flA0[f])} tubs`));
+    if (exShort) res.reasons.push(`The Exclusive would run out ${dname} night`);
+
+    // Size: fill toward the cap so both flavors reach their floors together
+    const horizon = [0, 1, 2, 3].map(k => addDays(A0, k));
+    const flMax = { vanilla: 0, chocolate: 0 };
+    for (const d of horizon) { const fl = flavorFloors(nightFloor(d, st), sh); core.forEach(f => { flMax[f] = Math.max(flMax[f], fl[f]); }); }
+    const rate = {}; core.forEach(f => { rate[f] = horizon.reduce((s, d) => s + fc(d).hi[f], 0) / horizon.length; });
+    const room = Math.floor(st.cap - ICE.reduce((s, f) => s + arrive[f], 0) + 1e-9);
+    const usable = Math.max(0, st.cap - exT - flMax.vanilla - flMax.chocolate);
+    const cover = usable / ((rate.vanilla + rate.chocolate) || 1);
+    const target = { vanilla: flMax.vanilla + rate.vanilla * cover, chocolate: flMax.chocolate + rate.chocolate * cover, exclusive: exT };
+    const want = {}; for (const f of ICE) want[f] = Math.max(0, target[f] - arrive[f]);
+    const order = {}; for (const f of ICE) order[f] = exOn || f !== "exclusive" ? Math.floor(want[f] + 0.5) : 0;
+    const sum = () => ICE.reduce((s, f) => s + order[f], 0);
+    while (sum() > Math.max(0, room)) { const f = ICE.filter(k => order[k] > 0).sort((a, b) => (order[b] - want[b]) - (order[a] - want[a]))[0]; order[f]--; }
+    while (sum() < room) {
+      const g = ICE.filter(f => exOn || f !== "exclusive").map(f => [f, want[f] - order[f]]).sort((a, b) => b[1] - a[1]);
+      if (!g.length || g[0][1] <= 0.25) break;
+      order[g[0][0]]++;
+    }
+    if (sum() === 0) { res.mode = "full"; return res; }
+    // Small orders cost a delivery fee and a trip. Top up to the minimum if the
+    // freezer has room; otherwise skip it when stock still clears 85% of the
+    // floor on a busy night and the full floor on a normal one.
+    const value = () => ICE.reduce((s, f) => s + order[f] * (f === "exclusive" ? (+st.exclusive.price || 0) : BY_KEY[f].price), 0);
+    while (value() < st.gordon.minimum && sum() < room) {
+      const g = core.map(f => [f, want[f] - order[f]]).sort((a, b) => b[1] - a[1]); order[g[0][0]]++;
+    }
+    if (value() < st.gordon.minimum) {
+      const okBusy = core.every(f => endA0[f] >= 0.85 * flA0[f]);
+      const okNormal = core.every(f => run[f] - fc(A0).mean[f] >= flA0[f]);
+      if (okBusy && okNormal) { res.mode = "none"; res.smallSkipped = true; return res; }
+      res.fee = true;
+    }
+    res.mode = "order"; res.order = order; res.room = room;
+    res.atArrival = ICE.reduce((s, f) => s + arrive[f] + order[f], 0);
+    return res;
+  }
+
+  // 7-night outlook: each morning runs the same policy with expected sales
+  function simulateWeek({ stock, soldTonight, pending, todayPlan, base, settings: st, nowStamp }) {
+    const biz = stampBusinessDate(nowStamp);
+    const S = {}; for (const f of ICE) S[f] = stock[f] || 0;
+    const incoming = {}; // date -> lines
+    for (const o of pending || []) { const t = (incoming[o.arrivesOn] ||= {}); for (const k in o.lines) t[k] = (t[k] || 0) + o.lines[k]; }
+    if (todayPlan && todayPlan.mode === "order") { const t = (incoming[todayPlan.arriveOn] ||= {}); for (const f of ICE) t[f] = (t[f] || 0) + todayPlan.order[f]; }
+    const nights = [];
+    for (let k = 0; k < 7; k++) {
+      const ds = addDays(biz, k);
+      let ordered = null;
+      if (k > 0) {
+        const pend = Object.entries(incoming).filter(([d]) => d >= ds).map(([d, lines]) => ({ arrivesOn: d, lines }));
+        const p = planGordon({ stock: S, soldTonight: {}, pending: pend, base, settings: st, nowStamp: ds + "T08:00:00" });
+        if (p.mode === "order") { ordered = p.order; const t = (incoming[p.arriveOn] ||= {}); for (const f of ICE) t[f] = (t[f] || 0) + p.order[f]; }
+      } else if (todayPlan && todayPlan.mode === "order") ordered = todayPlan.order;
+      let arrived = null;
+      if (incoming[ds]) { arrived = incoming[ds]; for (const f of ICE) S[f] += arrived[f] || 0; delete incoming[ds]; }
+      const fc = forecastNight(ds, base, st, biz), pre = { ...S };
+      for (const f of ICE) S[f] = Math.max(0, S[f] - (k === 0 ? Math.max(0, fc.mean[f] - ((soldTonight || {})[f] || 0) / st.yields[f]) : fc.mean[f]));
+      nights.push({ ds, pre, post: { ...S }, arrived, ordered, closed: fc.closed, floor: nightFloor(ds, st) });
+    }
+    return nights;
+  }
+
+  // ---------- Sam's Club (batched) ----------
+  // An order goes in only when something can't safely wait another day. Then
+  // everything running low rides along, topped up to about two weeks, and the
+  // basket is filled to the free-delivery minimum with the next items due.
+  function planSupplies({ stock, base, usage, settings: st, nowStamp }) {
+    const biz = stampBusinessDate(nowStamp);
+    const items = CATALOG.filter(c => c.group !== "ice");
+    const rows = [];
+    for (const c of items) {
+      const nightsFc = []; for (let k = 0; k < 28; k++) nightsFc.push(mixNight(c.key, addDays(biz, k), base, usage, st, biz));
+      const avg = nightsFc.slice(0, 14).reduce((s, n) => s + n.mean, 0) / 14;
+      const s = stock[c.key];
+      if (!s) { rows.push({ key: c.key, status: "uncounted", avg }); continue; }
+      let left = Math.max(0, s.value), cover = 28;
+      for (let k = 0; k < 28; k++) { left -= nightsFc[k].hi; if (left < 0) { cover = k; break; } }
+      const status = cover <= 2 ? "now" : cover <= 6 ? "soon" : "ok";
+      rows.push({ key: c.key, stock: s.value, cover, status, avg, nightsFc });
+    }
+    const plans = {};
+    for (const sup of ["sams", "gordon"]) {
+      const mine = rows.filter(r => BY_KEY[r.key].supplier === sup && r.status !== "uncounted");
+      const due = mine.filter(r => r.cover <= 2);
+      const minCover = mine.length ? Math.min(...mine.map(r => r.cover)) : 28;
+      const needBy = minCover >= 28 ? null : addDays(biz, Math.max(0, minCover - 2));
+      const basket = mine.filter(r => r.cover < st.supplies.topUpBelow).map(r => {
+        const c = BY_KEY[r.key];
+        const need = r.nightsFc.slice(0, st.supplies.coverTo).reduce((s, n) => s + n.mean, 0) + r.nightsFc[0].hi + r.nightsFc[1].hi - Math.max(0, r.stock);
+        return { key: r.key, packs: Math.max(1, Math.ceil(need / c.pack - 1e-9)), cover: r.cover };
+      }).filter(x => x.packs > 0);
+      const value = () => basket.reduce((s, x) => s + x.packs * BY_KEY[x.key].price, 0);
+      if (sup === "sams") {
+        const extra = mine.filter(r => !basket.find(b => b.key === r.key) && r.cover < 28).sort((a, b) => a.cover - b.cover);
+        for (const r of extra) { if (value() >= st.supplies.samsMinimum) break; basket.push({ key: r.key, packs: 1, cover: r.cover, filler: true }); }
+      }
+      plans[sup] = { orderToday: due.length > 0, due: due.map(r => r.key), needBy, basket: basket.sort((a, b) => a.cover - b.cover), value: value() };
+    }
+    return { rows, plans };
+  }
+
+  // ---------- learning from counts ----------
+  function learn(key, est, newValue, st) {
+    if (!est) return null;
+    const consumedActual = est.counted + est.delivered - newValue, predicted = est.used;
+    if (ICE.includes(key)) {
+      if (est.usedRaw < 80 || consumedActual <= 0.25) return null;
+      const implied = est.usedRaw / consumedActual;
+      if (implied < 12 || implied > 40) return { flag: `${BY_KEY[key].name} count looks off: it works out to ${implied.toFixed(1)} servings per tub. Recount if that seems wrong.` };
+      const old = st.yields[key], next = Math.round((0.75 * old + 0.25 * implied) * 10) / 10;
+      return { yields: { [key]: next }, note: `${BY_KEY[key].name}: this count works out to ${implied.toFixed(1)} servings per tub. Now using ${next} (was ${old}).` };
+    }
+    if (predicted < 0.5 || consumedActual <= 0) return null;
+    const ratio = consumedActual / predicted;
+    if (ratio < 0.4 || ratio > 2.5) return { flag: `${BY_KEY[key].name} count looks off against sales. Recount if that seems wrong.` };
+    const old = adjust(key, st), next = Math.round(Math.min(1.6, Math.max(0.6, old * (0.75 + 0.25 * ratio))) * 100) / 100;
+    return { adjust: { [key]: next }, note: `${BY_KEY[key].name}: used ${Math.abs(Math.round((ratio - 1) * 100))}% ${ratio >= 1 ? "more" : "less"} than sales predicted. Adjusted.` };
+  }
+
+  return { TZ, CATALOG, BY_KEY, ICE, SUPPLIER, EXCLUSIVE_OPTIONS, DOW, DOW_LONG, usageOfRow, localStamp, businessDate, addDays, weekday, stampBusinessDate,
+    quarter, fmtQ, fmtUnits, dailyTables, usageSince, estimates, forecastNight, mixNight, nightFloor, shares, flavorFloors, planGordon, simulateWeek, planSupplies, learn, perUnit };
+})();
+if (typeof module !== "undefined") module.exports = Engine;
+
+/* Data layer for the standalone website: everything goes through one Supabase
+   edge function that checks the shop passcode and holds the Square token. */
+const Store = (() => {
+  const FN = "https://jnfksxaswtxpgsgfmpdm.supabase.co/functions/v1/inventory";
+  const KEY = "cc-inventory-passcode";
+  let mem = null, onChange = null, timer = null;
+  const state = { settingsDoc: null, counts: [], deliveries: [], orders: [] };
+  const getPass = () => { try { return localStorage.getItem(KEY) || mem; } catch (_) { return mem; } };
+  async function call(op, payload) {
+    if (!FN || FN.indexOf("__") === 0) throw { code: "not_configured" };
+    let r;
+    try {
+      r = await fetch(FN, { method: "POST", headers: { "content-type": "application/json", "x-passcode": getPass() || "" }, body: JSON.stringify(Object.assign({ op }, payload)) });
+    } catch (_) { throw { code: "network" }; }
+    let j = null; try { j = await r.json(); } catch (_) {}
+    if (r.status === 401) throw { code: "wrong_passcode" };
+    if (!r.ok) throw { code: (j && j.error) || "server", message: j && j.message };
+    return j;
+  }
+  function apply(docs) {
+    state.settingsDoc = null; state.counts = []; state.deliveries = []; state.orders = [];
+    for (const d of docs || []) {
+      if (d.collection === "config" && d.id === "settings") state.settingsDoc = d.data;
+      else if (state[d.collection]) state[d.collection].push(Object.assign({ id: d.id }, d.data));
+    }
+  }
+  async function refresh() { const j = await call("state", {}); apply(j.docs); onChange && onChange(state); }
+  return {
+    kind: "web",
+    needsPasscode: () => !getPass(),
+    setPasscode(p) { mem = p; try { localStorage.setItem(KEY, p); } catch (_) {} },
+    clearPasscode() { mem = null; try { localStorage.removeItem(KEY); } catch (_) {} },
+    async init(cb) {
+      onChange = cb;
+      await refresh();
+      clearInterval(timer);
+      timer = setInterval(() => { if (!document.hidden) refresh().catch(() => {}); }, 30000);
+      document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh().catch(() => {}); });
+      return { ok: true, canSave: true, canSales: true };
+    },
+    async sales(request) { const j = await call("sales", { query: request.query }); return { rows: j.data || [], at: Date.now() }; },
+    async add(col, data) { await call("add", { collection: col, data }); await refresh(); },
+    async set(path, data) { const [c, id] = path.split("/"); await call("set", { collection: c, id, data }); await refresh(); },
+    async update(path, data) { const [c, id] = path.split("/"); await call("update", { collection: c, id, data }); await refresh(); },
+  };
+})();
+
+(() => {
+const E = Engine;
+const DEFAULTS = {
+  cap: 18, floors: { sunWed: 6, thuSat: 10 },
+  gordon: { windows: [{ label: "10 AM to 2 PM", cutoff: "09:30" }, { label: "2 to 5 PM", cutoff: "13:00" }], minimum: 75, fee: 10 },
+  supplies: { topUpBelow: 10, coverTo: 14, samsMinimum: 50 },
+  exclusive: { active: false, name: "Mint Chocolate Chip", code: "442845", price: 42.28, target: 2 },
+  yields: { vanilla: 21, chocolate: 25, exclusive: 22 }, adjust: {}, closedDates: [], learnLog: []
+};
+// Business nights from Square's posted hours, Sunday first
+const HOURS = ["8 to 11 PM", "8 to 11 PM", "8 to 11 PM", "8 to 11 PM", "8 PM to 2 AM", "8 PM to 2 AM", "8 PM to 2 AM"];
+const S = { data: { settingsDoc: null, counts: [], deliveries: [], orders: [] }, canSave: false, daily: null, hourly: null,
+  sq: { state: "loading" }, lastSync: null, syncing: false, booted: false };
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const money = n => "$" + n.toFixed(2);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const fmtQ = E.fmtQ;
+const SUP = E.SUPPLIER;
+
+function settings() {
+  const d = S.data.settingsDoc || {};
+  const s = JSON.parse(JSON.stringify(DEFAULTS));
+  for (const k in d) {
+    if (!(k in s)) continue;
+    if (d[k] && typeof d[k] === "object" && !Array.isArray(d[k]) && s[k] && typeof s[k] === "object" && !Array.isArray(s[k])) Object.assign(s[k], d[k]);
+    else s[k] = d[k];
+  }
+  if (!Array.isArray(s.gordon.windows) || !s.gordon.windows.length) s.gordon.windows = DEFAULTS.gordon.windows;
+  return s;
+}
+const exOn = st => !!(st.exclusive && st.exclusive.active);
+function nameOf(key, st) { return key === "exclusive" ? (exOn(st) ? st.exclusive.name : "Exclusive") : E.BY_KEY[key].name; }
+function codeOf(key, st) { return key === "exclusive" ? (st.exclusive.code || "") : (E.BY_KEY[key].code || ""); }
+function priceOf(key, st) { return key === "exclusive" ? (+st.exclusive.price || 0) : E.BY_KEY[key].price; }
+function when(iso) { return new Date(iso).toLocaleString("en-US", { timeZone: E.TZ, weekday: "short", hour: "numeric", minute: "2-digit" }); }
+function nowStamp() { return E.localStamp(new Date()); }
+function calToday() { return nowStamp().slice(0, 10); }
+function dayWord(ds, today) { return ds === today ? "today" : ds === E.addDays(today, 1) ? "tomorrow" : E.DOW_LONG[E.weekday(ds)]; }
+function clock(hhmm) { let [h, m] = hhmm.split(":").map(Number); const ap = h >= 12 ? "PM" : "AM"; h = h % 12 || 12; return m ? `${h}:${String(m).padStart(2, "0")} ${ap}` : `${h} ${ap}`; }
+function toast(msg) {
+  $("toastRoot").innerHTML = `<div class="toast" role="status">${esc(msg)}</div>`;
+  clearTimeout(toast.t); toast.t = setTimeout(() => { $("toastRoot").innerHTML = ""; }, 3400);
+}
+function latestCounts() { const l = {}; for (const c of S.data.counts) if (!l[c.item] || c.at > l[c.item].at) l[c.item] = c; return l; }
+function lineLabel(key, qty, st) {
+  const c = E.BY_KEY[key];
+  return c.group === "ice" ? `${qty} ${nameOf(key, st)} tub${qty === 1 ? "" : "s"}` : `${qty} × ${c.buy || c.name}`;
+}
+
+// ---------- Square ----------
+function sqError(e) {
+  const code = e && e.code;
+  const m = {
+    needs_reauth: "Square needs to be reconnected. Reconnect it in claude.ai Settings, Connectors, then tap Update.",
+    server_not_connected: "The Square connector isn't added for you. Add it in claude.ai Settings, Connectors, then tap Update.",
+    selection_required: "You have more than one Square connector. Pick one when Claude asks, then tap Update.",
+    not_in_manifest: "Square is turned off for this page. Turn it on from the page's Permissions menu, then tap Update.",
+    blocked_by_policy: "Your organization blocks this Square tool.",
+    approval_required: "Square needs your OK before this page can read sales.",
+    not_granted: "This view can't reach Square. Open it in claude.ai or the Claude app.",
+    capability_disabled: "This view can't reach Square. Open it in claude.ai or the Claude app.",
+    no_host: "Open this page in claude.ai or the Claude app to connect Square.",
+    tool_error: "Square reported an error: " + ((e && e.message) || "no details"),
+    square_error: "Square reported an error: " + ((e && e.message) || "no details"),
+    bad_payload: "Square sent back something unexpected. Tap Update to try again.",
+    network: "Can't reach the server. Check your connection, then tap Update.",
+    not_configured: "The server isn't set up yet.",
+    server: "The server had a problem. Tap Update to try again."
+  };
+  return { code, msg: m[code] || `Couldn't read Square (${code || "unknown"}). Tap Update to try again.` };
+}
+const DIMS = ["ModifierSales.modifier_list_name", "ModifierSales.modifier_name", "ModifierSales.item_name"];
+async function syncSquare(force) {
+  if (S.syncing) return;
+  S.syncing = true; renderStatus();
+  try {
+    const now = new Date(), today = E.businessDate(now);
+    let start = today + "T04:00:00";
+    for (const c of Object.values(latestCounts())) { const st = E.localStamp(new Date(c.at)); if (st < start) start = st; }
+    const floor = E.addDays(today, -45) + "T04:00:00"; if (start < floor) start = floor;
+    const end = E.localStamp(new Date(now.getTime() + 3600e3));
+    const [d, h] = await Promise.all([
+      Store.sales({ query: { measures: ["ModifierSales.net_quantity"], dimensions: DIMS, timeDimensions: [{ dimension: "ModifierSales.reporting_day", dateRange: [E.addDays(today, -35), today], granularity: "day" }], limit: 10000, timezone: E.TZ } }, force),
+      Store.sales({ query: { measures: ["ModifierSales.net_quantity"], dimensions: DIMS, timeDimensions: [{ dimension: "ModifierSales.local_reporting_timestamp", dateRange: [start.slice(0, 13) + ":00:00", end], granularity: "hour" }], limit: 10000 } }, force)
+    ]);
+    const pick = (r, k) => ({ list: r["ModifierSales.modifier_list_name"] || "", mod: r["ModifierSales.modifier_name"] || "", item: r["ModifierSales.item_name"] || "", t: String(r[k] || ""), qty: +r["ModifierSales.net_quantity"] || 0 });
+    S.daily = d.rows.map(r => { const x = pick(r, "ModifierSales.reporting_day.day"); x.day = x.t.slice(0, 10); return x; }).filter(r => r.day);
+    S.hourly = h.rows.map(r => { const x = pick(r, "ModifierSales.local_reporting_timestamp.hour"); x.hour = x.t.slice(0, 19); return x; }).filter(r => r.hour);
+    S.truncated = d.rows.length >= 10000 || h.rows.length >= 10000;
+    S.lastSync = Math.min(d.at, h.at);
+    S.sq = { state: "ok" };
+  } catch (e) {
+    if (e && e.code === "wrong_passcode") { Store.clearPasscode && Store.clearPasscode(); S.syncing = false; return gate("That passcode no longer works. Enter the new one."); }
+    const er = sqError(e); S.sq = { state: "error", code: er.code, msg: er.msg };
+  } finally { S.syncing = false; render(); }
+}
+
+// ---------- model ----------
+function model() {
+  const st = settings(), ns = nowStamp(), today = E.stampBusinessDate(ns), cal = ns.slice(0, 10);
+  const m = { st, today, cal, ns, ready: false };
+  if (!S.daily || !S.hourly) return m;
+  const { base, usage } = E.dailyTables(S.daily);
+  const est = E.estimates(S.data.counts, S.data.deliveries, S.hourly, st);
+  Object.assign(m, { base, usage, stock: est.stock, unmapped: est.unmapped });
+  const sold = {}, start = today + "T04:00:00";
+  for (const r of S.hourly) if (r.hour >= start && r.list === "Ice Cream Base") {
+    const k = { Vanilla: "vanilla", Chocolate: "chocolate", Exclusive: "exclusive" }[r.mod]; if (k) sold[k] = (sold[k] || 0) + r.qty;
+  }
+  m.soldTonight = sold;
+  const placed = S.data.orders.filter(o => o.status === "placed");
+  m.due = placed.filter(o => o.arrivesOn <= cal);
+  m.pendingGordon = placed.filter(o => o.supplier === "gordon");
+  m.iceKnown = ["vanilla", "chocolate"].every(k => m.stock[k]);
+  if (m.iceKnown) {
+    const now0 = {}; for (const f of E.ICE) now0[f] = m.stock[f] ? Math.max(0, m.stock[f].value) : 0;
+    m.stockNow = now0;
+    m.plan = E.planGordon({ stock: now0, soldTonight: sold, pending: m.pendingGordon, base, settings: st, nowStamp: ns });
+    m.week = E.simulateWeek({ stock: now0, soldTonight: sold, pending: m.pendingGordon, todayPlan: m.plan, base, settings: st, nowStamp: ns });
+  }
+  m.sup = E.planSupplies({ stock: m.stock, base, usage, settings: st, nowStamp: ns });
+  m.floorTonight = E.nightFloor(today, st);
+  m.ready = true;
+  return m;
+}
+
+// ---------- render ----------
+function renderStatus() {
+  if (!$("status")) return;
+  const st = settings(), today = E.businessDate(new Date());
+  const closed = (st.closedDates || []).includes(today);
+  const open = closed ? "Closed tonight" : `Open tonight ${HOURS[E.weekday(today)]}`;
+  let sync;
+  if (S.syncing) sync = `<span><span class="dot wait"></span>Updating sales…</span>`;
+  else if (S.sq.state === "ok") { const ago = Math.max(0, Math.round((Date.now() - S.lastSync) / 60000)); sync = `<span><span class="dot ok"></span>Sales updated ${ago < 1 ? "just now" : ago + " min ago"}</span>`; }
+  else if (S.sq.state === "error") sync = `<span><span class="dot bad"></span>Sales not updated</span>`;
+  else sync = `<span><span class="dot wait"></span>Loading sales…</span>`;
+  $("status").innerHTML = `<span>${open}</span>${sync}<button class="btn quiet small" data-act="refresh">Update</button>`;
+}
+function render() {
+  if (!$("shell")) return;
+  renderStatus();
+  const m = model();
+  let a = "";
+  if (S.booted && !S.canSave) a += `<div class="flag now"><strong>Counts can't be saved here.</strong><span>Open the app from its link.</span></div>`;
+  if (S.sq.state === "error") a += `<div class="flag now"><strong>Sales aren't updating.</strong><span>${esc(S.sq.msg)}</span>${S.sq.code === "approval_required" ? `<div class="actions"><button class="btn primary" data-act="refresh">Allow Square</button></div>` : ""}</div>`;
+  if (m.ready && m.unmapped && m.unmapped.length) a += `<div class="flag soon"><strong>New items in Square</strong><span>Not tracked yet: ${m.unmapped.map(esc).join(", ")}. Ask Claude to add them.</span></div>`;
+  if (S.truncated) a += `<div class="flag soon"><span>Some items haven't been counted in a long time. Recount them so their numbers stay accurate.</span></div>`;
+  $("alerts").innerHTML = a;
+  renderFreezer(m); renderGordon(m); renderSams(m); renderPantry(m); renderWeek(m); renderActivity(m);
+}
+
+const LID = { v: ["var(--van)", "var(--van-rim)"], c: ["var(--choc)", "var(--choc-rim)"], e: ["var(--mint)", "var(--mint-rim)"] };
+function lidSVG(kind, frac, over) {
+  if (!kind) return `<svg class="lid" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="43" fill="none" stroke="var(--rule-strong)" stroke-width="3" stroke-dasharray="6 7"/></svg>`;
+  const [fill, rim0] = LID[kind], rim = over ? "var(--now)" : rim0;
+  let inner;
+  if (frac >= 0.999) inner = `<circle cx="50" cy="50" r="39" fill="${fill}"/>`;
+  else {
+    const a = frac * 2 * Math.PI, x = 50 + 39 * Math.sin(a), y = 50 - 39 * Math.cos(a);
+    inner = `<circle cx="50" cy="50" r="39" fill="var(--tub-empty)"/><path d="M50 50 L50 11 A39 39 0 ${frac > 0.5 ? 1 : 0} 1 ${x.toFixed(2)} ${y.toFixed(2)} Z" fill="${fill}"/>`;
+  }
+  return `<svg class="lid" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" fill="var(--surface)" stroke="${rim}" stroke-width="${over ? 6 : 4}"/>${inner}<circle cx="50" cy="50" r="39" fill="none" stroke="${rim}" stroke-opacity="0.35" stroke-width="1.5"/></svg>`;
+}
+function renderFreezer(m) {
+  const el = $("freezer"), st = m.st, lc = latestCounts();
+  if (!lc.vanilla || !lc.chocolate) {
+    el.innerHTML = `<div class="section-head"><h2>Freezer</h2></div><div class="empty">No ice cream count yet. Tap <strong>Count</strong> and enter the tubs of each flavor, in quarters.</div>`;
+    return;
+  }
+  const val = k => m.stock && m.stock[k] ? Math.max(0, m.stock[k].value) : (lc[k] ? lc[k].value : 0);
+  const v = val("vanilla"), c = val("chocolate"), e = val("exclusive");
+  const total = v + c + e, cap = st.cap, slots = Math.max(cap, Math.ceil(total - 1e-9));
+  const floor = E.nightFloor(m.today, st);
+  const cells = [];
+  for (const [k, n] of [["v", v], ["c", c], ["e", e]]) { let r = E.quarter(n); while (r > 0.01) { const f = Math.min(1, r); cells.push({ k, f }); r -= f; } }
+  let lids = "";
+  for (let i = 0; i < slots; i++) lids += cells[i] ? lidSVG(cells[i].k, cells[i].f, i >= cap) : lidSVG(null);
+  let segs = "";
+  for (let i = 0; i < cap; i++) { const f = Math.max(0, Math.min(1, total - i)); segs += `<span class="seg"><i style="width:${Math.round(f * 100)}%"></i></span>`; }
+  const state = total > cap ? `<span class="pill now">Over by ${fmtQ(total - cap)}</span>` : total < floor ? `<span class="pill soon">Below ${floor}</span>` : `<span class="pill ok">Room for ${fmtQ(cap - total)}</span>`;
+  const tally = (k, kind) => {
+    const s = m.stock && m.stock[k], cnt = lc[k];
+    let sub = "Not counted";
+    if (s) {
+      const bits = [`Counted ${fmtQ(s.counted)} ${when(s.countedAt)}`];
+      if (s.delivered) bits.push(`${fmtQ(s.delivered)} delivered`);
+      if (s.used > 0.05) bits.push(`${fmtQ(s.used)} sold since`);
+      sub = bits.join(", ");
+    } else if (cnt) sub = `Counted ${when(cnt.at)}`;
+    return `<div class="tally"><span class="name"><span class="swatch" style="background:${LID[kind][0]};border-color:${LID[kind][1]}"></span>${esc(nameOf(k, st))}</span><span class="n">${fmtQ(val(k))}<small>tubs</small></span><span class="sub">${sub}</span></div>`;
+  };
+  const showE = exOn(st) || e > 0.01;
+  el.innerHTML = `
+    <div class="section-head"><h2>Freezer</h2>${state}</div>
+    <div class="freezer"><div class="freezer-well" role="img" aria-label="${fmtQ(total)} of ${cap} tubs: ${fmtQ(v)} vanilla, ${fmtQ(c)} chocolate${showE ? ", " + fmtQ(e) + " " + esc(nameOf("exclusive", st)) : ""}">${lids}</div></div>
+    <div class="readout"><span class="big">${fmtQ(total)}<span>of ${cap} tubs</span></span></div>
+    <div class="meter" style="--cap:${cap}" aria-hidden="true"><span class="floormark" style="left:${(floor / cap) * 100}%">Floor ${floor} tonight</span>${segs}</div>
+    <div class="tallies">${tally("vanilla", "v")}${tally("chocolate", "c")}${showE ? tally("exclusive", "e") : ""}</div>`;
+}
+
+function lineHTML(key, qty, st, note) {
+  const c = E.BY_KEY[key], code = codeOf(key, st), price = priceOf(key, st);
+  const label = c.group === "ice" ? `${nameOf(key, st)} tub${qty === 1 ? "" : "s"}` : (c.buy || c.name);
+  const sub = [`from ${SUP[c.supplier]}`, code ? `item ${code}` : "", note || ""].filter(Boolean).join(", ");
+  return `<div class="line"><span class="q">${qty}</span><span class="what">${esc(label)}<br><span class="code">${esc(sub)}</span></span><span class="cost">${price ? money(qty * price) : ""}</span></div>`;
+}
+function orderText(lines, st, supplier, extra) {
+  return `${SUP[supplier]} order${extra ? ", " + extra : ""}\n` + Object.entries(lines).filter(([, q]) => q > 0).map(([k, q]) => {
+    const code = codeOf(k, st); return `${lineLabel(k, q, st)}${code ? " (item " + code + ")" : ""}`;
+  }).join("\n");
+}
+function dueHTML(m, supplier) {
+  return (m.due || []).filter(o => o.supplier === supplier).map(o => {
+    const items = Object.entries(o.lines || {}).filter(([, q]) => q > 0).map(([k, q]) => `${q} ${nameOf(k, m.st).toLowerCase()}`).join(", ");
+    const late = o.arrivesOn < m.cal;
+    return `<div class="flag soon"><strong>${SUP[supplier]} delivery ${late ? "was due " + E.DOW_LONG[E.weekday(o.arrivesOn)] : "due today"}${o.window ? ", " + esc(o.window) : ""}</strong><span>${esc(items)}</span><div class="actions"><button class="btn primary" data-act="arrived" data-id="${esc(o.id)}">It arrived</button><button class="btn" data-act="notcoming" data-id="${esc(o.id)}">It didn't come</button></div></div>`;
+  }).join("");
+}
+function windowsText(p, cal) {
+  const day = p.arriveOn === cal ? "today" : "tomorrow";
+  return p.windows.map(w => `by ${clock(w.cutoff)} ${day} for ${w.label}`).join(", or ");
+}
+function renderGordon(m) {
+  const el = $("gordon"), st = m.st;
+  if (!m.ready) { el.innerHTML = `<div class="panel"><h2>Gordon's</h2><p class="muted">${S.sq.state === "error" ? "Needs sales from Square to plan the order." : "Reading sales from Square…"}</p></div>`; return; }
+  if (!m.iceKnown) { el.innerHTML = `<div class="panel"><h2>Gordon's</h2><p class="muted">Count vanilla and chocolate to get today's order.</p></div>`; return; }
+  const p = m.plan, due = dueHTML(m, "gordon"), gplan = m.sup.plans.gordon;
+  const urgent = p.urgent.length ? `<div class="flag soon"><span>A busy night could take ${p.urgent.map(f => nameOf(f, st).toLowerCase()).join(" and ")} under tonight's floor. The next Gordon's delivery can't arrive until ${dayWord(p.arriveOn, m.cal)} afternoon.</span></div>` : "";
+  S.lastGordon = null;
+  if (p.mode === "order") {
+    const ice = Object.entries(p.order).filter(([, q]) => q > 0);
+    const addons = (gplan.basket || []).filter(x => x.cover < 21);
+    const lines = Object.assign({}, p.order); addons.forEach(x => { lines[x.key] = x.packs; });
+    const total = Object.entries(lines).reduce((s, [k, q]) => s + q * priceOf(k, st), 0);
+    const fee = total < st.gordon.minimum;
+    S.lastGordon = { lines, arriveOn: p.arriveOn, window: p.windows[p.windows.length - 1].label };
+    const day = dayWord(p.arriveOn, m.cal);
+    el.innerHTML = `${due}<div class="panel act">
+      <div class="section-head"><h2>${p.arriveOn === m.cal ? "Order from Gordon's this morning" : "Order from Gordon's tomorrow morning"}</h2><span class="when-chip">Arrives ${day}</span></div>
+      <p class="lead">${ice.map(([k, q]) => lineLabel(k, q, st)).join(" and ")} from Gordon's${addons.length ? ", plus " + addons.map(x => nameOf(x.key, st).toLowerCase()).join(" and ") : ""}.</p>
+      <p class="note">Order ${windowsText(p, m.cal)} delivery. ${esc(p.reasons.join(". "))} without it.</p>
+      <div class="lines">${Object.entries(lines).map(([k, q]) => lineHTML(k, q, st, E.BY_KEY[k].group !== "ice" ? "running low, added to save a delivery" : "")).join("")}</div>
+      <div class="sum"><span>Total</span><span class="tnum">${money(total)}</span></div>
+      ${fee ? `<div class="flag soon"><span>Under ${money(st.gordon.minimum)}, Gordon's adds a ${money(st.gordon.fee)} delivery fee.</span></div>` : ""}
+      <p class="note">When it arrives the freezer will hold about ${fmtQ(p.atArrival)} of ${st.cap} tubs.</p>
+      ${urgent}
+      <div class="actions"><button class="btn primary" data-act="place-gordon">I placed this order</button><button class="btn" data-act="copy-gordon">Copy order</button></div></div>`;
+  } else if (p.mode === "ordered") {
+    const os = m.pendingGordon.filter(o => o.arrivesOn === p.arriveOn), id = os[0] && os[0].id;
+    const items = os.flatMap(x => Object.entries(x.lines || {}).filter(([, q]) => q > 0)).map(([k, q]) => lineHTML(k, q, st)).join("");
+    el.innerHTML = `${due}<div class="panel">
+      <div class="section-head"><h2>Gordon's order is in</h2><span class="pill ok">Arrives ${dayWord(p.arriveOn, m.cal)}</span></div>
+      <div class="lines">${items}</div>
+      ${p.trim ? `<div class="flag now"><strong>Cut ${p.trim.over} ${esc(nameOf(p.trim.flavor, st).toLowerCase())} from this order.</strong><span>Tonight was slower than planned. As ordered, the freezer would hit about ${fmtQ(p.atArrival)} tubs. Change it in Gordon Ordering, then update it here.</span><div class="actions"><button class="btn primary" data-act="edit-order" data-id="${esc(id)}">Update the order</button></div></div>` : `<p class="note">The freezer should hold about ${fmtQ(p.atArrival)} of ${st.cap} tubs after it arrives.</p>`}
+      ${urgent}<div class="actions"><button class="btn" data-act="edit-order" data-id="${esc(id)}">Change quantities</button></div></div>`;
+  } else {
+    const next = (m.week || []).find((n, k) => k > 0 && n.ordered);
+    const nextTxt = next ? `Next order is likely ${E.DOW_LONG[E.weekday(next.ds)]} morning, about ${Object.entries(next.ordered).filter(([, q]) => q > 0).map(([k, q]) => lineLabel(k, q, st).toLowerCase()).join(" and ")} from Gordon's.` : "No Gordon's order looks needed this week.";
+    const fl = p.floorA0 ? `${fmtQ(p.floorA0.vanilla)} vanilla and ${fmtQ(p.floorA0.chocolate)} chocolate` : "";
+    el.innerHTML = `${due}<div class="panel">
+      <div class="section-head"><h2>No Gordon's order ${p.arriveOn === m.cal ? "today" : "needed tomorrow"}</h2><span class="pill ok">Stocked</span></div>
+      <p>${p.mode === "full" ? `There's no room to add tubs without going over ${st.cap}.` : p.smallSkipped ? `Only a small top-up would fit, which would cost the ${money(st.gordon.fee)} fee. You stay close to the floor, so it waits for the next order.` : `Even a busy ${E.DOW_LONG[E.weekday(p.arriveOn)]} night leaves you above the floor of ${fl}.`} ${nextTxt}</p>${urgent}
+      <div class="actions"><button class="btn" data-act="log-gordon">Log an order you placed</button></div></div>`;
+  }
+}
+function renderSams(m) {
+  const el = $("sams"), st = m.st;
+  if (!m.ready) { el.innerHTML = ""; return; }
+  const due = dueHTML(m, "sams"), plan = m.sup.plans.sams;
+  S.lastSams = null;
+  const counted = m.sup.rows.some(r => E.BY_KEY[r.key].supplier === "sams" && r.status !== "uncounted");
+  if (!counted) { el.innerHTML = due + `<div class="panel"><h2>Sam's Club</h2><p class="muted">Count your mix-ins to plan Sam's orders.</p></div>`; return; }
+  if (!plan.basket.length) { el.innerHTML = due + `<div class="panel"><div class="section-head"><h2>Sam's Club</h2><span class="pill ok">Stocked</span></div><p>Nothing needed for at least ${st.supplies.topUpBelow} nights.</p><div class="actions"><button class="btn" data-act="log-sams">Log an order you placed</button></div></div>`; return; }
+  const lines = Object.fromEntries(plan.basket.map(x => [x.key, x.packs]));
+  const total = plan.value, fee = total < st.supplies.samsMinimum;
+  const needDay = plan.orderToday ? m.today : plan.needBy;
+  const head = plan.orderToday ? "Order from Sam's Club today" : `Next Sam's Club order ${needDay ? E.DOW_LONG[E.weekday(needDay)] : "this week"}`;
+  S.lastSams = { lines };
+  el.innerHTML = `${due}<div class="panel ${plan.orderToday ? "act" : ""}">
+    <div class="section-head"><h2>${head}</h2><span class="${plan.orderToday ? "when-chip" : "pill soon"}">${plan.orderToday ? "About 3 hours" : "Planned"}</span></div>
+    <p class="note">${plan.orderToday ? `${plan.due.map(k => nameOf(k, st)).join(" and ")} can't wait another day.` : "Nothing is urgent yet. This is what the order will look like."} Everything running low is grouped into one order with about ${st.supplies.coverTo} nights of each.</p>
+    <div class="lines">${plan.basket.map(x => lineHTML(x.key, x.packs, st, x.filler ? "added to reach the delivery minimum" : `about ${x.cover} night${x.cover === 1 ? "" : "s"} left`)).join("")}</div>
+    <div class="sum"><span>Total</span><span class="tnum">${money(total)}</span></div>
+    ${fee ? `<div class="flag soon"><span>Still under ${money(st.supplies.samsMinimum)}, so Sam's may add a delivery fee.</span></div>` : ""}
+    <div class="actions">${plan.orderToday ? `<button class="btn primary" data-act="place-sams">I placed this order</button>` : ""}<button class="btn" data-act="copy-sams">Copy list</button>${!plan.orderToday ? `<button class="btn" data-act="place-sams">Order it now anyway</button>` : ""}</div></div>`;
+}
+
+function pkgSVG(c, frac) {
+  const col = c.color || "var(--accent)";
+  const h = Math.max(0, Math.min(1, frac));
+  if (c.unit === "bag") {
+    return `<svg class="pkg" viewBox="0 0 16 24" aria-hidden="true"><defs><clipPath id="b${c.key}${Math.round(h * 100)}"><path d="M2 3h12l1 17a3 3 0 0 1-3 3H4a3 3 0 0 1-3-3z"/></clipPath></defs><path d="M2 3h12l1 17a3 3 0 0 1-3 3H4a3 3 0 0 1-3-3z" fill="var(--tub-empty)"/><rect x="0" y="${(24 - 21 * h).toFixed(2)}" width="16" height="24" fill="${col}" clip-path="url(#b${c.key}${Math.round(h * 100)})"/><path d="M2 3h12l1 17a3 3 0 0 1-3 3H4a3 3 0 0 1-3-3z" fill="none" stroke="var(--rule-strong)" stroke-width="1"/><path d="M1.5 1.5h13" stroke="var(--rule-strong)" stroke-width="1.6" stroke-linecap="round"/></svg>`;
+  }
+  return `<svg class="pkg" viewBox="0 0 16 24" aria-hidden="true"><rect x="1" y="3" width="14" height="20" rx="1.5" fill="var(--tub-empty)"/><rect x="1" y="${(3 + 20 * (1 - h)).toFixed(2)}" width="14" height="${(20 * h).toFixed(2)}" fill="${col}"/><rect x="1" y="3" width="14" height="20" rx="1.5" fill="none" stroke="var(--rule-strong)" stroke-width="1"/><path d="M1 3l2-2h10l2 2" fill="none" stroke="var(--rule-strong)" stroke-width="1"/></svg>`;
+}
+function renderPantry(m) {
+  const el = $("pantry");
+  if (!m.ready) { el.innerHTML = `<div class="section-head"><h2>Pantry</h2></div><div class="empty">${S.sq.state === "error" ? "Needs sales from Square." : "Reading sales from Square…"}</div>`; return; }
+  const rows = m.sup.rows, label = { now: "Order now", soon: "Order soon", ok: "Fine" };
+  const SHELVES = [["cereal", "Cereal"], ["cookies", "Cookies, brownies and grahams"], ["fruit", "Fruit"], ["other", "Matcha and granola"], ["supply", "Spoons and float sodas"]];
+  let html = "";
+  for (const [shelf, title] of SHELVES) {
+    const mine = rows.filter(r => E.BY_KEY[r.key].shelf === shelf && r.status !== "uncounted");
+    if (!mine.length) continue;
+    html += `<div class="shelf"><div class="shelf-name">${title}</div><div class="goods">` + mine.map(r => {
+      const c = E.BY_KEY[r.key];
+      let units = Math.max(0, r.stock), amt = E.fmtUnits(r.key, r.stock), icons = "";
+      if (c.key === "brownies") { units = units / 48; amt = `${Math.round(Math.max(0, r.stock))} servings`; }
+      if (c.key === "oreos") amt += `, ${Math.round(Math.max(0, r.stock) * 156)} cookies`;
+      if (c.unit === "can") icons = `<span class="amt">${Math.round(units)}</span>`;
+      else {
+        const full = Math.floor(units + 1e-9), part = units - full, show = Math.min(full, 5);
+        for (let i = 0; i < show; i++) icons += pkgSVG(c, 1);
+        if (full > 5) icons += `<span class="more">+${full - 5}</span>`;
+        if (part > 0.06 || units < 0.06) icons += pkgSVG(c, part);
+      }
+      const pct = c.unit !== "can" && units < 1 ? `${Math.round(units * 100)}% of a ${c.key === "brownies" ? "Little Debbie box" : c.unit} left` : amt;
+      const left = r.cover >= 28 ? "4+ weeks" : `${r.cover} night${r.cover === 1 ? "" : "s"}`;
+      return `<div class="good"><div class="pkgs">${icons}</div><div><div class="nm">${esc(c.name)}</div><div class="meta">${esc(pct)}</div></div><div class="right"><span class="pill ${r.status}">${label[r.status]}</span><span class="meta">${left}</span></div></div>`;
+    }).join("") + `</div></div>`;
+  }
+  const unc = rows.filter(r => r.status === "uncounted");
+  el.innerHTML = `<div class="section-head"><h2>Pantry</h2><span class="small muted">Nights each item lasts at a busy pace</span></div>
+    ${html || `<div class="empty">Count your mix-ins once and they show up here, with how full each box or bag is.</div>`}
+    ${unc.length ? `<details class="more"><summary>Not counted yet (${unc.length})</summary><p>${unc.map(r => esc(E.BY_KEY[r.key].name)).join(", ")}. Count them once from the Count button and the app keeps track from then on.</p></details>` : ""}`;
+}
+function renderWeek(m) {
+  const el = $("week"), st = m.st;
+  if (!m.ready || !m.week) { el.innerHTML = `<div class="section-head"><h2>Next 7 nights</h2></div><div class="empty">${m.ready ? "Count vanilla and chocolate to see the week." : "Appears once sales load from Square."}</div>`; return; }
+  const tot = o => E.ICE.reduce((s, f) => s + (o[f] || 0), 0);
+  const maxY = Math.max(st.cap + 1.5, ...m.week.map(n => tot(n.pre)));
+  const pct = v => (v / maxY) * 100;
+  const bars = m.week.map(n => {
+    const pre = tot(n.pre);
+    const seg = [["vanilla", "var(--van)"], ["chocolate", "var(--choc)"], ["exclusive", "var(--mint)"]].filter(([f]) => n.pre[f] > 0.01)
+      .map(([f, col]) => `<b style="height:${(n.pre[f] / Math.max(pre, 0.01)) * 100}%;background:${col}"></b>`).join("");
+    return `<div class="bar"><div class="stack" style="height:${pct(pre)}%">${seg}</div><span class="after" style="bottom:${pct(tot(n.post))}%"></span><span class="fl" style="bottom:${pct(n.floor)}%"></span><span class="lbl" style="bottom:calc(${pct(pre)}% + 4px)">${fmtQ(pre)}</span></div>`;
+  }).join("");
+  const days = m.week.map((n, k) => {
+    const arr = n.arrived ? tot(n.arrived) : 0;
+    return `<div><strong>${k === 0 ? "Tonight" : E.DOW[E.weekday(n.ds)]}</strong>${n.closed ? `<span class="muted">Closed</span>` : arr ? `<span class="arr">+${arr} in</span>` : `<span class="muted">&nbsp;</span>`}</div>`;
+  }).join("");
+  el.innerHTML = `<div class="section-head"><h2>Next 7 nights</h2><span class="small muted">Tubs in the freezer when each night opens</span></div>
+    <div class="week"><div class="plot">${bars}<span class="hline cap" style="bottom:${pct(st.cap)}%"><span>Most ${st.cap}</span></span></div><div class="days">${days}</div></div>
+    <p class="note">The dark tick is where an average night leaves you. The purple tick is that night's floor (${st.floors.sunWed} Sunday to Wednesday, ${st.floors.thuSat} Thursday to Saturday). Later deliveries assume each morning's suggested Gordon's order gets placed.</p>`;
+}
+function renderActivity(m) {
+  const el = $("activity"), ev = [], byAt = {};
+  for (const c of S.data.counts) (byAt[c.at] ||= []).push(c);
+  for (const at in byAt) ev.push({ at, t: "Counted " + byAt[at].map(c => `${nameOf(c.item, m.st).toLowerCase()} ${c.item === "brownies" || E.BY_KEY[c.item].step === 1 ? Math.round(c.value) : fmtQ(c.value)}`).join(", ") });
+  for (const d of S.data.deliveries) ev.push({ at: d.at, t: `Received ${E.BY_KEY[d.item] && E.BY_KEY[d.item].step === 1 ? d.qty : fmtQ(d.qty)} ${nameOf(d.item, m.st).toLowerCase()}${SUP[d.source] ? " from " + SUP[d.source] : ""}` });
+  for (const o of S.data.orders) ev.push({ at: o.placedAt, t: `Ordered from ${SUP[o.supplier]} for ${dayWord(o.arrivesOn, m.cal)}: ${Object.entries(o.lines || {}).filter(([, q]) => q > 0).map(([k, q]) => q + " " + nameOf(k, m.st).toLowerCase()).join(", ")}${o.status === "cancelled" ? " (didn't come)" : o.status === "arrived" ? " (arrived)" : ""}` });
+  for (const n of (m.st.learnLog || []).slice(-6)) ev.push({ at: n.at, t: n.note });
+  ev.sort((a, b) => (a.at < b.at ? 1 : -1));
+  el.innerHTML = `<div class="section-head"><h2>Activity</h2></div>${ev.length ? `<div class="log">${ev.slice(0, 12).map(e => `<div><time>${esc(when(e.at))}</time><span>${esc(e.t)}</span></div>`).join("")}</div>` : `<div class="empty">Counts, orders and deliveries will show up here.</div>`}`;
+}
+
+// ---------- sheets ----------
+let sheet = null;
+function openSheet(kind, data) { sheet = { kind, data }; renderSheet(); }
+function closeSheet() { sheet = null; $("sheetRoot").innerHTML = ""; }
+const stepper = (id, shown) => `<div class="stepper"><button type="button" data-step="-1" data-id="${id}" aria-label="Less">−</button><span class="v" id="v-${id}">${shown}</span><button type="button" data-step="1" data-id="${id}" aria-label="More">+</button></div>`;
+function renderSheet() {
+  if (!sheet) return;
+  const st = settings(), d = sheet.data;
+  let title = "", body = "", foot = "";
+  if (sheet.kind === "count") {
+    title = "Count";
+    const row = k => {
+      const c = E.BY_KEY[k], v = d.vals[k], shown = c.step === 1 ? String(Math.round(v)) : fmtQ(v);
+      const app = d.est[k] != null ? `App says ${c.step === 1 ? Math.round(d.est[k]) : fmtQ(d.est[k])}` : "Not counted yet";
+      return `<div class="crow ${d.touched[k] ? "touched" : ""}"><div><div class="cname">${esc(nameOf(k, st))}</div><div class="csub">${esc(c.unit)}${c.unitNote ? " of " + esc(c.unitNote) : ""}. ${app}</div></div>${stepper(k, shown)}</div>`;
+    };
+    const brownies = `<div class="crow ${d.touched.brownies ? "touched" : ""}"><div><div class="cname">Brownies</div><div class="csub">${Math.round(d.vals.bLd * 48 + d.vals.bLoose)} servings. Little Debbie box = 48, small brownie = 1</div></div><span></span></div>
+      <div class="crow"><div class="csub">Little Debbie boxes</div>${stepper("bLd", fmtQ(d.vals.bLd))}</div>
+      <div class="crow"><div class="csub">Loose small brownies</div>${stepper("bLoose", String(Math.round(d.vals.bLoose)))}</div>`;
+    const ice = ["vanilla", "chocolate"].concat(exOn(st) || (d.est.exclusive || 0) > 0 ? ["exclusive"] : []);
+    body = `<p class="note" style="margin-top:10px">Tap + or − in quarters. Only rows you change get saved (green dot), and each becomes the new starting point. If a number is already right, tap + then − to confirm it.</p>
+      <div class="grp">Ice cream, in tubs</div>${ice.map(row).join("")}
+      <div class="grp">Mix-ins</div>${E.CATALOG.filter(c => c.group === "mix").map(c => c.key === "brownies" ? brownies : row(c.key)).join("")}
+      <div class="grp">Supplies</div>${E.CATALOG.filter(c => c.group === "supply").map(c => row(c.key)).join("")}`;
+    const n = Object.values(d.touched).filter(Boolean).length;
+    foot = `<button class="btn" data-act="close">Cancel</button><button class="btn primary" data-act="save-count" ${n ? "" : "disabled"}>${n ? `Save ${n} count${n === 1 ? "" : "s"}` : "Save counts"}</button>`;
+  } else if (sheet.kind === "order") {
+    title = d.edit ? "Change the order" : `Order placed with ${SUP[d.supplier]}`;
+    const cal = calToday();
+    body = `<p class="note" style="margin-top:10px">Set what you actually ordered from ${SUP[d.supplier]}.</p>` + Object.keys(d.lines).map(k => `<div class="crow"><div><div class="cname">${esc(nameOf(k, st))}</div><div class="csub">${E.BY_KEY[k].group === "ice" ? "tubs" : esc(E.BY_KEY[k].buy || "")}</div></div>${stepper("o-" + k, String(d.lines[k]))}</div>`).join("") +
+      `<div class="field"><span class="cname">Arrives</span><select id="arrivesSel"><option value="${cal}" ${d.arrivesOn === cal ? "selected" : ""}>Today</option><option value="${E.addDays(cal, 1)}" ${d.arrivesOn === E.addDays(cal, 1) ? "selected" : ""}>Tomorrow</option></select></div>` +
+      (d.supplier === "gordon" ? `<div class="field"><span class="cname">Window</span><select id="windowSel">${st.gordon.windows.map(w => `<option ${d.window === w.label ? "selected" : ""}>${esc(w.label)}</option>`).join("")}</select></div>` : "");
+    foot = `<button class="btn" data-act="close">Cancel</button><button class="btn primary" data-act="save-order">${d.edit ? "Save changes" : "Save order"}</button>`;
+  } else if (sheet.kind === "arrive") {
+    title = "What arrived?";
+    body = `<p class="note" style="margin-top:10px">Lower anything that came short. This adds it to stock.</p>` + Object.keys(d.lines).map(k => `<div class="crow"><div class="cname">${esc(nameOf(k, st))}</div>${stepper("a-" + k, String(d.lines[k]))}</div>`).join("");
+    foot = `<button class="btn" data-act="close">Cancel</button><button class="btn primary" data-act="save-arrive">Add to stock</button>`;
+  } else if (sheet.kind === "delivery") {
+    title = "Add a delivery";
+    const c = E.BY_KEY[d.item];
+    body = `<p class="note" style="margin-top:10px">For anything you picked up or got delivered outside an order saved here.</p>
+      <div class="field"><span class="cname">Item</span><select id="delItem">${E.CATALOG.map(x => `<option value="${x.key}" ${d.item === x.key ? "selected" : ""}>${esc(nameOf(x.key, st))}</option>`).join("")}</select></div>
+      <div class="crow"><div><div class="cname">Amount</div><div class="csub">${esc(c.unit)}s${c.unitNote ? " of " + esc(c.unitNote) : ""}</div></div>${stepper("del", c.step === 1 ? String(d.qty) : fmtQ(d.qty))}</div>
+      <div class="field"><span class="cname">From</span><select id="delSrc"><option value="sams" ${c.supplier === "sams" ? "selected" : ""}>Sam's Club</option><option value="gordon" ${c.supplier === "gordon" ? "selected" : ""}>Gordon's</option><option value="other">Somewhere else</option></select></div>`;
+    foot = `<button class="btn" data-act="close">Cancel</button><button class="btn primary" data-act="save-delivery" ${d.qty > 0 ? "" : "disabled"}>Add to stock</button>`;
+  } else if (sheet.kind === "settings") {
+    title = "Settings";
+    const num = (id, label, val, step, sub) => `<div class="field"><span><span class="cname">${label}</span>${sub ? `<br><span class="csub">${sub}</span>` : ""}</span><input type="number" inputmode="decimal" id="${id}" value="${val}" step="${step}" min="0"></div>`;
+    const time = (id, label, val) => `<div class="field"><span class="cname">${label}</span><input type="time" id="${id}" value="${val}" style="min-height:44px;padding:9px 11px;border-radius:10px;border:1px solid var(--rule-strong);background:var(--ground)"></div>`;
+    body = `<div class="grp">Freezer</div>
+      ${num("s-cap", "Most tubs ever", d.cap, 1, "No order ever takes the freezer past this")}
+      ${num("s-fsw", "Floor, Sunday to Wednesday", d.floors.sunWed, 0.25, "Fewest tubs left at the end of the night")}
+      ${num("s-fts", "Floor, Thursday to Saturday", d.floors.thuSat, 0.25, "Split between vanilla and chocolate by how they sell")}
+      <div class="grp">Gordon's</div>
+      ${time("s-c1", `Order by, for ${esc(d.gordon.windows[0].label)}`, d.gordon.windows[0].cutoff)}
+      ${time("s-c2", `Order by, for ${esc(d.gordon.windows[1].label)}`, d.gordon.windows[1].cutoff)}
+      ${num("s-gmin", "No fee from", d.gordon.minimum, 1, "Dollars")}
+      <div class="grp">Sam's Club</div>
+      ${num("s-smin", "Free delivery from", d.supplies.samsMinimum, 1, "Dollars. Orders get filled to this with the next items due")}
+      ${num("s-cover", "Stock each order for", d.supplies.coverTo, 1, "Nights")}
+      <div class="grp">Exclusive flavor</div>
+      <div class="field"><label class="toggle" for="s-exon"><input type="checkbox" id="s-exon" ${d.exclusive.active ? "checked" : ""}>Carry an Exclusive flavor</label><span></span></div>
+      <div class="field"><span class="cname">Flavor</span><select id="s-exname">${E.EXCLUSIVE_OPTIONS.map(o => `<option value="${esc(o.name)}" ${d.exclusive.name === o.name ? "selected" : ""}>${esc(o.name)}</option>`).join("")}</select></div>
+      ${num("s-ext", "Tubs to keep", d.exclusive.target, 1)}
+      <div class="grp">Servings per tub</div>
+      ${num("s-yv", "Vanilla", d.yields.vanilla, 0.1, "Adjusts itself from your counts")}
+      ${num("s-yc", "Chocolate", d.yields.chocolate, 0.1)}
+      ${num("s-ye", "Exclusive", d.yields.exclusive, 0.1)}
+      <div class="grp">Closed nights</div>
+      <p class="note">Breaks and nights off. The app plans no sales for these.</p>
+      <div class="field"><input type="date" id="s-cdate"><button class="btn" type="button" data-act="add-closed">Add night</button></div>
+      ${(d.closedDates || []).slice().sort().map(ds => `<div class="field"><span class="tnum">${esc(new Date(ds + "T12:00:00Z").toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" }))}</span><button class="btn quiet" data-act="rm-closed" data-ds="${esc(ds)}">Remove</button></div>`).join("") || `<p class="note">None added yet.</p>`}
+      ${Store.kind === "web" ? `<div class="grp">This phone</div><div class="field"><span class="csub">Forget the passcode on this device</span><button class="btn" type="button" data-act="signout">Sign out</button></div>` : ""}`;
+    foot = `<button class="btn" data-act="close">Cancel</button><button class="btn primary" data-act="save-settings">Save settings</button>`;
+  } else if (sheet.kind === "copy") {
+    title = "Copy this";
+    body = `<textarea id="copyBox" rows="8" style="width:100%;margin-top:12px;padding:10px;border-radius:10px;border:1px solid var(--rule-strong);background:var(--ground)">${esc(d.text)}</textarea>`;
+    foot = `<button class="btn" data-act="close">Done</button>`;
+  }
+  $("sheetRoot").innerHTML = `<div class="scrim" data-act="scrim"><div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}"><header><h2>${esc(title)}</h2><button class="btn quiet" data-act="close">Close</button></header><div class="body">${body}</div><footer>${foot}</footer></div></div>`;
+  if (sheet.kind === "copy") { const t = $("copyBox"); t.focus(); t.select(); }
+}
+
+function openCount() {
+  const m = model(), lc = latestCounts(), vals = {}, est = {};
+  for (const c of E.CATALOG) {
+    const s = m.stock && m.stock[c.key];
+    const e = s ? Math.max(0, s.value) : (lc[c.key] ? lc[c.key].value : null);
+    est[c.key] = e;
+    vals[c.key] = e == null ? 0 : (c.step === 1 ? Math.round(e) : E.quarter(e));
+  }
+  const bEst = est.brownies, det = lc.brownies && lc.brownies.detail;
+  vals.bLd = bEst != null ? Math.floor(bEst / 48 * 4) / 4 : 0;
+  vals.bLoose = bEst != null ? Math.max(0, Math.round(bEst - vals.bLd * 48)) : 0;
+  if (det && bEst != null && Math.abs(bEst - (det.ld * 48 + det.loose)) < 0.5) { vals.bLd = det.ld; vals.bLoose = det.loose; }
+  openSheet("count", { vals, est, touched: {} });
+}
+function dbMsg(e) {
+  const c = e && e.code;
+  if (c === "wrong_passcode") return "The passcode stopped working. Sign in again.";
+  if (c === "network") return "Can't reach the server. Check your connection and try again.";
+  if (c === "invalid_argument" || c === "no_db") return "This view can't save. Open the app from its link.";
+  if (c === "quota_exceeded") return "Storage is full. Ask Claude to clean up old entries.";
+  return "Couldn't save. Try again in a moment.";
+}
+async function saveCount() {
+  const d = sheet.data, st = settings(), m = model(), at = new Date().toISOString();
+  const keys = Object.keys(d.touched).filter(k => d.touched[k]);
+  const learned = { yields: {}, adjust: {} }, notes = [];
+  try {
+    for (const k of keys) {
+      const value = k === "brownies" ? d.vals.bLd * 48 + d.vals.bLoose : d.vals[k];
+      const L = E.learn(k, m.stock && m.stock[k], value, st);
+      if (L) { if (L.yields) Object.assign(learned.yields, L.yields); if (L.adjust) Object.assign(learned.adjust, L.adjust); if (L.note || L.flag) notes.push({ at, note: L.note || L.flag }); }
+      const doc = { item: k, value, at };
+      if (k === "brownies") doc.detail = { ld: d.vals.bLd, loose: d.vals.bLoose };
+      await Store.add("counts", doc);
+    }
+    if (Object.keys(learned.yields).length || Object.keys(learned.adjust).length || notes.length) {
+      const next = settings();
+      Object.assign(next.yields, learned.yields); next.adjust = Object.assign({}, next.adjust, learned.adjust);
+      next.learnLog = (next.learnLog || []).concat(notes).slice(-12); next.updatedAt = at;
+      await Store.set("config/settings", next);
+    }
+    closeSheet(); toast(`Saved ${keys.length} count${keys.length === 1 ? "" : "s"}`);
+    if (notes.length) setTimeout(() => toast(notes[0].note), 3500);
+  } catch (e) { toast(dbMsg(e)); }
+}
+async function saveOrder() {
+  const d = sheet.data;
+  const arrivesOn = $("arrivesSel") ? $("arrivesSel").value : d.arrivesOn;
+  const win = $("windowSel") ? $("windowSel").value : d.window;
+  const lines = {}; for (const k in d.lines) if (d.lines[k] > 0) lines[k] = d.lines[k];
+  if (!Object.keys(lines).length && !d.edit) return toast("Add at least one item first.");
+  try {
+    if (d.edit) await Store.update("orders/" + d.id, { lines, arrivesOn, window: win || null });
+    else await Store.add("orders", { supplier: d.supplier, lines, placedAt: new Date().toISOString(), arrivesOn, window: win || null, status: "placed" });
+    closeSheet(); toast(d.edit ? "Order changed" : "Order saved");
+  } catch (e) { toast(dbMsg(e)); }
+}
+async function saveArrive() {
+  const d = sheet.data, at = new Date().toISOString();
+  try {
+    for (const k in d.lines) if (d.lines[k] > 0) await Store.add("deliveries", { item: k, qty: d.lines[k], at, source: d.supplier, orderId: d.id });
+    await Store.update("orders/" + d.id, { status: "arrived", arrivedAt: at, received: d.lines });
+    closeSheet(); toast("Added to stock");
+  } catch (e) { toast(dbMsg(e)); }
+}
+async function saveDelivery() {
+  const d = sheet.data, item = $("delItem").value, src = $("delSrc").value;
+  try { await Store.add("deliveries", { item, qty: d.qty, at: new Date().toISOString(), source: src }); closeSheet(); toast("Added to stock"); }
+  catch (e) { toast(dbMsg(e)); }
+}
+function draftSettings() {
+  const d = sheet.data, n = id => { const el = $(id); const v = el ? parseFloat(el.value) : NaN; return isNaN(v) ? null : v; }, keep = (v, o) => (v == null ? o : v);
+  const t = (id, o) => { const el = $(id); return el && /^\d\d:\d\d$/.test(el.value) ? el.value : o; };
+  d.cap = keep(n("s-cap"), d.cap);
+  d.floors.sunWed = keep(n("s-fsw"), d.floors.sunWed); d.floors.thuSat = keep(n("s-fts"), d.floors.thuSat);
+  d.gordon.windows[0].cutoff = t("s-c1", d.gordon.windows[0].cutoff); d.gordon.windows[1].cutoff = t("s-c2", d.gordon.windows[1].cutoff);
+  d.gordon.minimum = keep(n("s-gmin"), d.gordon.minimum);
+  d.supplies.samsMinimum = keep(n("s-smin"), d.supplies.samsMinimum); d.supplies.coverTo = keep(n("s-cover"), d.supplies.coverTo);
+  if ($("s-exon")) d.exclusive.active = $("s-exon").checked;
+  if ($("s-exname")) d.exclusive.name = $("s-exname").value;
+  d.exclusive.target = keep(n("s-ext"), d.exclusive.target);
+  d.yields.vanilla = keep(n("s-yv"), d.yields.vanilla); d.yields.chocolate = keep(n("s-yc"), d.yields.chocolate); d.yields.exclusive = keep(n("s-ye"), d.yields.exclusive);
+  d.closedDates = d.closedDates || [];
+  return d;
+}
+async function saveSettings() {
+  const d = draftSettings(), next = settings();
+  next.cap = Math.max(1, Math.round(d.cap));
+  next.floors = { sunWed: Math.max(0, d.floors.sunWed), thuSat: Math.max(0, d.floors.thuSat) };
+  next.gordon = { windows: d.gordon.windows, minimum: Math.max(0, d.gordon.minimum), fee: next.gordon.fee };
+  next.supplies = { topUpBelow: next.supplies.topUpBelow, coverTo: Math.min(28, Math.max(5, Math.round(d.supplies.coverTo))), samsMinimum: Math.max(0, d.supplies.samsMinimum) };
+  const opt = E.EXCLUSIVE_OPTIONS.find(o => o.name === d.exclusive.name) || E.EXCLUSIVE_OPTIONS[0];
+  next.exclusive = { active: !!d.exclusive.active, name: opt.name, code: opt.code, price: opt.price, target: Math.max(1, Math.round(d.exclusive.target || 2)) };
+  for (const f of ["vanilla", "chocolate", "exclusive"]) if (d.yields[f] >= 5 && d.yields[f] <= 60) next.yields[f] = d.yields[f];
+  next.closedDates = d.closedDates; next.updatedAt = new Date().toISOString();
+  try { await Store.set("config/settings", next); closeSheet(); toast("Settings saved"); } catch (e) { toast(dbMsg(e)); }
+}
+function copyText(text) {
+  try { navigator.clipboard.writeText(text).then(() => toast("Copied"), () => openSheet("copy", { text })); } catch (_) { openSheet("copy", { text }); }
+}
+
+// ---------- events ----------
+document.addEventListener("click", e => {
+  const sb = e.target.closest("[data-step]");
+  if (sb && sheet) {
+    const id = sb.dataset.id, dir = +sb.dataset.step, d = sheet.data;
+    if (sheet.kind === "count") {
+      if (id === "bLd" || id === "bLoose") { d.vals[id] = Math.max(0, +(d.vals[id] + dir * (id === "bLd" ? 0.25 : 1)).toFixed(2)); d.touched.brownies = true; }
+      else { d.vals[id] = Math.max(0, +(d.vals[id] + dir * E.BY_KEY[id].step).toFixed(2)); d.touched[id] = true; }
+    } else if (sheet.kind === "order" || sheet.kind === "arrive") {
+      const k = id.slice(2); d.lines[k] = Math.max(0, d.lines[k] + dir);
+      if (sheet.kind === "order") { if ($("arrivesSel")) d.arrivesOn = $("arrivesSel").value; if ($("windowSel")) d.window = $("windowSel").value; }
+    } else if (sheet.kind === "delivery") {
+      d.item = $("delItem").value; d.qty = Math.max(0, +(d.qty + dir * E.BY_KEY[d.item].step).toFixed(2));
+    }
+    const body = document.querySelector(".sheet .body"), top = body ? body.scrollTop : 0;
+    renderSheet(); const b2 = document.querySelector(".sheet .body"); if (b2) b2.scrollTop = top;
+    return;
+  }
+  const el = e.target.closest("[data-act]"); if (!el) return;
+  const act = el.dataset.act;
+  if (act === "scrim" && e.target !== el) return;
+  switch (act) {
+    case "scrim": case "close": closeSheet(); break;
+    case "refresh": syncSquare(true); break;
+    case "open-count": openCount(); break;
+    case "open-delivery": openSheet("delivery", { item: "oreos", qty: 1 }); break;
+    case "open-settings": openSheet("settings", JSON.parse(JSON.stringify(settings()))); break;
+    case "place-gordon": if (S.lastGordon) openSheet("order", { supplier: "gordon", lines: Object.assign({}, S.lastGordon.lines), arrivesOn: S.lastGordon.arriveOn, window: S.lastGordon.window }); break;
+    case "place-sams": if (S.lastSams) openSheet("order", { supplier: "sams", lines: Object.assign({}, S.lastSams.lines), arrivesOn: calToday() }); break;
+    case "copy-gordon": if (S.lastGordon) copyText(orderText(S.lastGordon.lines, settings(), "gordon", `deliver ${dayWord(S.lastGordon.arriveOn, calToday())} ${S.lastGordon.window}`)); break;
+    case "log-gordon": { const st = settings(), ns = nowStamp(), late = st.gordon.windows[st.gordon.windows.length - 1]; const lines = { vanilla: 0, chocolate: 0 }; if (exOn(st)) lines.exclusive = 0; lines.bananas = 0;
+      openSheet("order", { supplier: "gordon", lines, arrivesOn: ns.slice(11, 16) < late.cutoff ? ns.slice(0, 10) : E.addDays(ns.slice(0, 10), 1), window: late.label }); break; }
+    case "log-sams": { const lines = {}; E.CATALOG.filter(c => c.supplier === "sams").forEach(c => { lines[c.key] = 0; }); openSheet("order", { supplier: "sams", lines, arrivesOn: calToday() }); break; }
+    case "copy-sams": if (S.lastSams) copyText(orderText(S.lastSams.lines, settings(), "sams")); break;
+    case "edit-order": { const o = S.data.orders.find(x => x.id === el.dataset.id); if (o) openSheet("order", { edit: true, id: o.id, supplier: o.supplier, lines: Object.assign({}, o.lines), arrivesOn: o.arrivesOn, window: o.window }); break; }
+    case "arrived": { const o = S.data.orders.find(x => x.id === el.dataset.id); if (o) openSheet("arrive", { id: o.id, supplier: o.supplier, lines: Object.assign({}, o.lines) }); break; }
+    case "notcoming": Store.update("orders/" + el.dataset.id, { status: "cancelled" }).then(() => toast("Marked as not coming"), err => toast(dbMsg(err))); break;
+    case "save-count": saveCount(); break;
+    case "save-order": saveOrder(); break;
+    case "save-arrive": saveArrive(); break;
+    case "save-delivery": saveDelivery(); break;
+    case "save-settings": saveSettings(); break;
+    case "add-closed": { const v = $("s-cdate").value; if (v) { draftSettings(); if (!sheet.data.closedDates.includes(v)) sheet.data.closedDates.push(v); renderSheet(); } break; }
+    case "rm-closed": draftSettings(); sheet.data.closedDates = sheet.data.closedDates.filter(x => x !== el.dataset.ds); renderSheet(); break;
+    case "signout": Store.clearPasscode(); closeSheet(); gate(); break;
+  }
+});
+document.addEventListener("change", e => { if (sheet && sheet.kind === "delivery" && e.target.id === "delItem") { sheet.data.item = e.target.value; sheet.data.qty = 1; renderSheet(); } });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && sheet) closeSheet(); });
+document.addEventListener("visibilitychange", () => { if (!document.hidden && S.booted && (!S.lastSync || Date.now() - S.lastSync > 5 * 60e3)) syncSquare(false); });
+
+// ---------- passcode gate (website only) ----------
+let shellHTML = null;
+function gate(err) {
+  closeSheet();
+  if (shellHTML == null) shellHTML = $("root").innerHTML;
+  $("root").innerHTML = `<div class="gate"><form id="gateForm">
+    <svg class="mark" viewBox="0 0 40 40" aria-hidden="true" style="width:52px;height:52px"><circle cx="20" cy="20" r="18" fill="var(--accent)"/><circle cx="20" cy="20" r="12.5" fill="var(--van)"/><path d="M20 20 L20 7.5 A12.5 12.5 0 0 1 32.5 20 Z" fill="var(--choc)"/></svg>
+    <div class="wordmark" style="font-size:1.4rem">Campus Creamery</div>
+    <label for="pass" class="muted">Enter the shop passcode to open the freezer.</label>
+    <input id="pass" type="password" autocomplete="current-password" required>
+    ${err ? `<div class="flag now"><span>${esc(err)}</span></div>` : ""}
+    <button class="btn primary" type="submit">Open</button></form></div>`;
+  $("gateForm").addEventListener("submit", ev => {
+    ev.preventDefault();
+    Store.setPasscode($("pass").value.trim());
+    $("root").innerHTML = shellHTML;
+    boot();
+  });
+  setTimeout(() => { const p = $("pass"); if (p) p.focus(); }, 50);
+}
+
+// ---------- boot ----------
+let timers = false;
+async function boot() {
+  if (Store.needsPasscode()) return gate();
+  render();
+  let r;
+  try { r = await Store.init(state => { S.data = state; render(); }); }
+  catch (e) {
+    if (e && e.code === "wrong_passcode") { Store.clearPasscode(); return gate("That passcode didn't work. Try again."); }
+    const er = sqError(e); S.sq = { state: "error", code: er.code, msg: er.msg }; S.booted = true; S.canSave = false; render(); return;
+  }
+  S.booted = true; S.canSave = !!r.canSave;
+  if (!r.ok || !r.canSales) { const er = sqError({ code: r.code || r.salesCode }); S.sq = { state: "error", code: er.code, msg: er.msg }; render(); return; }
+  render();
+  await syncSquare(false);
+  if (!timers) { timers = true; setInterval(() => { if (!document.hidden) syncSquare(false); }, 5 * 60e3); setInterval(() => { renderStatus(); }, 60e3); }
+}
+boot();
+})();
+
+</script>
+</body>
+</html>
