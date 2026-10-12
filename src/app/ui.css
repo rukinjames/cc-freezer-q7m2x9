@@ -193,7 +193,7 @@ input[type="number"] { width: 6.5em; font-variant-numeric: tabular-nums; }
 
 /* passcode */
 .gate { min-height: 100vh; min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
-.gate form { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 14px; }
+.gate form, .gate .gate-box { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 14px; }
 .gate input { width: 100%; font-size: 1.2rem; letter-spacing: 0.08em; }
 
 @media (min-width: 720px) {

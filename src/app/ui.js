@@ -10,8 +10,11 @@ const DEFAULTS = {
 // Business nights from Square's posted hours, Sunday first
 const HOURS = ["8 to 11 PM", "8 to 11 PM", "8 to 11 PM", "8 to 11 PM", "8 PM to 2 AM", "8 PM to 2 AM", "8 PM to 2 AM"];
 const S = { data: { settingsDoc: null, counts: [], deliveries: [], orders: [] }, canSave: false, daily: null, hourly: null,
-  sq: { state: "loading" }, lastSync: null, syncing: false, booted: false };
+  sq: { state: "loading" }, lastSync: null, syncing: false, booted: false, epoch: 0 };
 const $ = id => document.getElementById(id);
+// The app's markup. On the website it ships inside a <template>, so nothing of the app
+// is on screen until the server has accepted the passcode.
+const SHELL = (() => { const t = $("shellTpl"); return t ? t.innerHTML : $("root").innerHTML; })();
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const money = n => "$" + n.toFixed(2);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -72,7 +75,8 @@ function sqError(e) {
 }
 const DIMS = ["ModifierSales.modifier_list_name", "ModifierSales.modifier_name", "ModifierSales.item_name"];
 async function syncSquare(force) {
-  if (S.syncing) return;
+  if (S.syncing || !S.booted) return;
+  const ep = S.epoch;
   S.syncing = true; renderStatus();
   try {
     const now = new Date(), today = E.businessDate(now);
@@ -84,6 +88,7 @@ async function syncSquare(force) {
       Store.sales({ query: { measures: ["ModifierSales.net_quantity"], dimensions: DIMS, timeDimensions: [{ dimension: "ModifierSales.reporting_day", dateRange: [E.addDays(today, -35), today], granularity: "day" }], limit: 10000, timezone: E.TZ } }, force),
       Store.sales({ query: { measures: ["ModifierSales.net_quantity"], dimensions: DIMS, timeDimensions: [{ dimension: "ModifierSales.local_reporting_timestamp", dateRange: [start.slice(0, 13) + ":00:00", end], granularity: "hour" }], limit: 10000 } }, force)
     ]);
+    if (ep !== S.epoch) return; // signed out while Square was answering
     const pick = (r, k) => ({ list: r["ModifierSales.modifier_list_name"] || "", mod: r["ModifierSales.modifier_name"] || "", item: r["ModifierSales.item_name"] || "", t: String(r[k] || ""), qty: +r["ModifierSales.net_quantity"] || 0 });
     S.daily = d.rows.map(r => { const x = pick(r, "ModifierSales.reporting_day.day"); x.day = x.t.slice(0, 10); return x; }).filter(r => r.day);
     S.hourly = h.rows.map(r => { const x = pick(r, "ModifierSales.local_reporting_timestamp.hour"); x.hour = x.t.slice(0, 19); return x; }).filter(r => r.hour);
@@ -91,9 +96,10 @@ async function syncSquare(force) {
     S.lastSync = Math.min(d.at, h.at);
     S.sq = { state: "ok" };
   } catch (e) {
-    if (e && e.code === "wrong_passcode") { Store.clearPasscode && Store.clearPasscode(); S.syncing = false; return gate("That passcode no longer works. Enter the new one."); }
+    if (ep !== S.epoch) return;
+    if (e && (e.code === "wrong_passcode" || e.code === "too_many_attempts")) return lockOut(gateMsg(e, true));
     const er = sqError(e); S.sq = { state: "error", code: er.code, msg: er.msg };
-  } finally { S.syncing = false; render(); }
+  } finally { if (ep === S.epoch) { S.syncing = false; render(); } }
 }
 
 // ---------- model ----------
@@ -585,7 +591,8 @@ document.addEventListener("click", e => {
     case "save-settings": saveSettings(); break;
     case "add-closed": { const v = $("s-cdate").value; if (v) { draftSettings(); if (!sheet.data.closedDates.includes(v)) sheet.data.closedDates.push(v); renderSheet(); } break; }
     case "rm-closed": draftSettings(); sheet.data.closedDates = sheet.data.closedDates.filter(x => x !== el.dataset.ds); renderSheet(); break;
-    case "signout": Store.clearPasscode(); closeSheet(); gate(); break;
+    case "signout": lockOut(); break;
+    case "retry-boot": boot(); break;
   }
 });
 document.addEventListener("change", e => { if (sheet && sheet.kind === "delivery" && e.target.id === "delItem") { sheet.data.item = e.target.value; sheet.data.qty = 1; renderSheet(); } });
@@ -593,37 +600,74 @@ document.addEventListener("keydown", e => { if (e.key === "Escape" && sheet) clo
 document.addEventListener("visibilitychange", () => { if (!document.hidden && S.booted && (!S.lastSync || Date.now() - S.lastSync > 5 * 60e3)) syncSquare(false); });
 
 // ---------- passcode gate (website only) ----------
-let shellHTML = null;
+// The rule: nothing from the app is drawn until the server has accepted the passcode,
+// and signing out (or the passcode changing) wipes everything loaded so far.
+const MARK = `<svg class="mark" viewBox="0 0 40 40" aria-hidden="true" style="width:52px;height:52px"><circle cx="20" cy="20" r="18" fill="var(--accent)"/><circle cx="20" cy="20" r="12.5" fill="var(--van)"/><path d="M20 20 L20 7.5 A12.5 12.5 0 0 1 32.5 20 Z" fill="var(--choc)"/></svg><div class="wordmark" style="font-size:1.4rem">Campus Creamery</div>`;
+const isLock = e => !!e && (e.code === "wrong_passcode" || e.code === "too_many_attempts");
+function gateMsg(e, remembered) {
+  const c = e && e.code;
+  if (c === "wrong_passcode") return remembered ? "That passcode no longer works. Enter the current one." : "That passcode didn't work. Try again.";
+  if (c === "too_many_attempts") return "Too many wrong tries from this network. Wait 15 minutes, then try again.";
+  if (c === "network") return "Couldn't reach the server. Check your internet, then try again.";
+  if (c === "not_configured") return "The server isn't set up yet.";
+  return "The server had a problem. Try again in a minute.";
+}
+function lockScreen(inner) {
+  closeSheet(); $("toastRoot").innerHTML = "";
+  $("root").innerHTML = `<div class="gate">${inner}</div>`;
+}
+function wipe() {
+  S.epoch++;
+  if (Store.signOut) Store.signOut();
+  S.data = { settingsDoc: null, counts: [], deliveries: [], orders: [] };
+  S.daily = null; S.hourly = null; S.truncated = false; S.lastSync = null;
+  S.booted = false; S.canSave = false; S.syncing = false; S.sq = { state: "loading" };
+}
+function lockOut(msg) { wipe(); gate(msg); }
 function gate(err) {
-  closeSheet();
-  if (shellHTML == null) shellHTML = $("root").innerHTML;
-  $("root").innerHTML = `<div class="gate"><form id="gateForm">
-    <svg class="mark" viewBox="0 0 40 40" aria-hidden="true" style="width:52px;height:52px"><circle cx="20" cy="20" r="18" fill="var(--accent)"/><circle cx="20" cy="20" r="12.5" fill="var(--van)"/><path d="M20 20 L20 7.5 A12.5 12.5 0 0 1 32.5 20 Z" fill="var(--choc)"/></svg>
-    <div class="wordmark" style="font-size:1.4rem">Campus Creamery</div>
+  lockScreen(`<form id="gateForm" novalidate>${MARK}
     <label for="pass" class="muted">Enter the shop passcode to open the freezer.</label>
-    <input id="pass" type="password" autocomplete="current-password" required>
-    ${err ? `<div class="flag now"><span>${esc(err)}</span></div>` : ""}
-    <button class="btn primary" type="submit">Open</button></form></div>`;
-  $("gateForm").addEventListener("submit", ev => {
+    <input id="pass" type="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false" required>
+    ${err ? `<div class="flag now" role="alert"><span>${esc(err)}</span></div>` : ""}
+    <button class="btn primary" type="submit">Open</button></form>`);
+  $("gateForm").addEventListener("submit", async ev => {
     ev.preventDefault();
-    Store.setPasscode($("pass").value.trim());
-    $("root").innerHTML = shellHTML;
-    boot();
+    const code = $("pass").value.trim();
+    if (!code) return $("pass").focus();
+    const btn = ev.target.querySelector("button[type=submit]");
+    btn.disabled = true; btn.textContent = "Checking…"; $("pass").disabled = true;
+    const ep = S.epoch;
+    let st;
+    try { st = await Store.signIn(code); }
+    catch (e) { if (ep === S.epoch) gate(gateMsg(e)); return; }
+    if (ep !== S.epoch) return;
+    S.data = st;
+    $("root").innerHTML = SHELL; render();
+    boot(true);
   });
   setTimeout(() => { const p = $("pass"); if (p) p.focus(); }, 50);
 }
 
 // ---------- boot ----------
 let timers = false;
-async function boot() {
-  if (Store.needsPasscode()) return gate();
-  render();
+async function boot(justSignedIn) {
+  if (Store.kind === "web") {
+    if (Store.needsPasscode()) return gate();
+    if (!justSignedIn) lockScreen(`<div class="gate-box">${MARK}<p class="muted" role="status">Opening the freezer…</p></div>`);
+  } else render();
+  const ep = S.epoch;
   let r;
-  try { r = await Store.init(state => { S.data = state; render(); }); }
-  catch (e) {
-    if (e && e.code === "wrong_passcode") { Store.clearPasscode(); return gate("That passcode didn't work. Try again."); }
+  try {
+    r = await Store.init(state => { if (ep === S.epoch) { S.data = state; render(); } },
+                         e => { if (ep === S.epoch) lockOut(gateMsg(e, true)); });
+  } catch (e) {
+    if (ep !== S.epoch) return;
+    if (isLock(e)) return lockOut(gateMsg(e, true));
+    if (Store.kind === "web") return lockScreen(`<div class="gate-box">${MARK}<div class="flag now" role="alert"><span>${esc(gateMsg(e))}</span></div><button class="btn primary" type="button" data-act="retry-boot">Try again</button></div>`);
     const er = sqError(e); S.sq = { state: "error", code: er.code, msg: er.msg }; S.booted = true; S.canSave = false; render(); return;
   }
+  if (ep !== S.epoch) return;
+  if (!$("shell")) $("root").innerHTML = SHELL;
   S.booted = true; S.canSave = !!r.canSave;
   if (!r.ok || !r.canSales) { const er = sqError({ code: r.code || r.salesCode }); S.sq = { state: "error", code: er.code, msg: er.msg }; render(); return; }
   render();

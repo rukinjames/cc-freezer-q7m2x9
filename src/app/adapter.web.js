@@ -1,41 +1,70 @@
 /* Data layer for the standalone website: everything goes through one Supabase
-   edge function that checks the shop passcode and holds the Square token. */
+   edge function that checks the shop passcode and holds the Square token.
+   A passcode is only remembered after the server has accepted it, and nothing
+   loaded from the server outlives a sign out. */
 const Store = (() => {
   const FN = "__FUNCTION_URL__";
   const KEY = "cc-inventory-passcode";
-  let mem = null, onChange = null, timer = null;
-  const state = { settingsDoc: null, counts: [], deliveries: [], orders: [] };
+  const blank = () => ({ settingsDoc: null, counts: [], deliveries: [], orders: [] });
+  let mem = null, onChange = null, onLocked = null, timer = null, gen = 0, listening = false;
+  let state = blank();
   const getPass = () => { try { return localStorage.getItem(KEY) || mem; } catch (_) { return mem; } };
-  async function call(op, payload) {
+  const forget = () => { mem = null; try { localStorage.removeItem(KEY); } catch (_) {} };
+
+  // `trial` is a passcode being checked at sign in. Without it the remembered one is used,
+  // and a refusal means the remembered passcode stopped working, so the app locks itself.
+  async function call(op, payload, trial) {
     if (!FN || FN.indexOf("__") === 0) throw { code: "not_configured" };
+    const code = trial != null ? trial : getPass();
+    if (!code) throw { code: "wrong_passcode" };
+    const g = gen;
     let r;
     try {
-      r = await fetch(FN, { method: "POST", headers: { "content-type": "application/json", "x-passcode": getPass() || "" }, body: JSON.stringify(Object.assign({ op }, payload)) });
+      r = await fetch(FN, { method: "POST", cache: "no-store", headers: { "content-type": "application/json", "x-passcode": code }, body: JSON.stringify(Object.assign({ op }, payload)) });
     } catch (_) { throw { code: "network" }; }
     let j = null; try { j = await r.json(); } catch (_) {}
-    if (r.status === 401) throw { code: "wrong_passcode" };
-    if (!r.ok) throw { code: (j && j.error) || "server", message: j && j.message };
+    let err = null;
+    if (r.status === 401) err = { code: "wrong_passcode" };
+    else if (r.status === 429) err = { code: "too_many_attempts" };
+    else if (!r.ok) err = { code: (j && j.error) || "server", message: j && j.message };
+    if (err) {
+      if (trial == null && g === gen && (err.code === "wrong_passcode" || err.code === "too_many_attempts") && onLocked) onLocked(err);
+      throw err;
+    }
+    if (g !== gen) throw { code: "signed_out" };
     return j;
   }
   function apply(docs) {
-    state.settingsDoc = null; state.counts = []; state.deliveries = []; state.orders = [];
+    const s = blank();
     for (const d of docs || []) {
-      if (d.collection === "config" && d.id === "settings") state.settingsDoc = d.data;
-      else if (state[d.collection]) state[d.collection].push(Object.assign({ id: d.id }, d.data));
+      if (d.collection === "config" && d.id === "settings") s.settingsDoc = d.data;
+      else if (s[d.collection]) s[d.collection].push(Object.assign({ id: d.id }, d.data));
     }
+    state = s;
   }
   async function refresh() { const j = await call("state", {}); apply(j.docs); onChange && onChange(state); }
+  function stop() { gen++; clearInterval(timer); timer = null; onChange = null; onLocked = null; state = blank(); }
+
   return {
     kind: "web",
     needsPasscode: () => !getPass(),
-    setPasscode(p) { mem = p; try { localStorage.setItem(KEY, p); } catch (_) {} },
-    clearPasscode() { mem = null; try { localStorage.removeItem(KEY); } catch (_) {} },
-    async init(cb) {
-      onChange = cb;
+    async signIn(code) {
+      const j = await call("state", {}, code);
+      mem = code; try { localStorage.setItem(KEY, code); } catch (_) {}
+      apply(j.docs);
+      return state;
+    },
+    signOut() { stop(); forget(); },
+    clearPasscode() { stop(); forget(); },
+    async init(cb, locked) {
+      onChange = cb; onLocked = locked || null;
       await refresh();
       clearInterval(timer);
       timer = setInterval(() => { if (!document.hidden) refresh().catch(() => {}); }, 30000);
-      document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh().catch(() => {}); });
+      if (!listening) {
+        listening = true;
+        document.addEventListener("visibilitychange", () => { if (!document.hidden && timer) refresh().catch(() => {}); });
+      }
       return { ok: true, canSave: true, canSales: true };
     },
     async sales(request) { const j = await call("sales", { query: request.query }); return { rows: j.data || [], at: Date.now() }; },

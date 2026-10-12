@@ -35,7 +35,14 @@ body {{ padding-top: env(safe-area-inset-top, 0px); }}
 </head>
 <body>
 """
-web = head + html + f"\n<script>\n{eng}\n{web_adapter}\n{ui}\n</script>\n</body>\n</html>\n"
+# On the website the app markup ships inside a <template>, so it is never on screen
+# until the passcode has been accepted. #root starts empty.
+OPEN = '<div id="root">'
+s = html.index(OPEN) + len(OPEN); e = html.index('<div id="sheetRoot">')
+inner = html[s:e].rstrip()
+assert inner.endswith('</div>'), "ui.html: #root must close right before #sheetRoot"
+web_html = f'<template id="shellTpl">{inner[:-len("</div>")]}</template>\n<div id="root"></div>\n' + html[e:]
+web = head + web_html + f"\n<script>\n{eng}\n{web_adapter}\n{ui}\n</script>\n</body>\n</html>\n"
 open(os.path.join(D, 'site', 'index.html'), 'w').write(web)
 json.dump({"name": "Campus Creamery Inventory", "short_name": "Creamery", "start_url": "./", "scope": "./", "display": "standalone",
            "background_color": "#f4f3f8", "theme_color": "#5a34d0",

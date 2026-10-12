@@ -22,6 +22,19 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, "content-type": "application/json" } });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// Guessing protection: 10 wrong passcodes from one network in 15 minutes locks that
+// network out until the 15 minutes are up. The IP address is stored only as a hash.
+const MAX_FAILS = 10;
+const WINDOW_S = 15 * 60;
+function clientIp(req: Request) {
+  const xf = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim();
+  return xf || req.headers.get("x-real-ip") || req.headers.get("cf-connecting-ip") || "unknown";
+}
+async function hex(s: string) {
+  const d = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)));
+  return Array.from(d, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 async function samePasscode(given: string) {
   if (!PASSCODE) return false;
   const enc = new TextEncoder();
@@ -81,20 +94,25 @@ async function squareLoad(query: Obj) {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
-  // Setup check, no passcode needed: says whether the secrets work, never returns data.
+  // Setup check, no passcode needed: says whether the secrets are set. Returns no data
+  // and makes no Square call, so strangers can't use it to run up Square requests.
   if (req.method === "GET" && new URL(req.url).searchParams.has("health")) {
-    const out: Obj = { ok: true, passcodeSet: !!PASSCODE, squareTokenSet: !!SQUARE_TOKEN };
-    if (SQUARE_TOKEN) {
-      const r = await squareLoad({ measures: ["ModifierSales.net_quantity"], timeDimensions: [{ dimension: "ModifierSales.reporting_day", dateRange: "last 7 days", granularity: "week" }], timezone: "America/Chicago" });
-      out.square = "error" in r ? `error: ${r.error}` : "ok";
-    }
-    return json(out);
+    return json({ ok: true, passcodeSet: !!PASSCODE, squareTokenSet: !!SQUARE_TOKEN });
   }
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
   if (!PASSCODE) {
     return json({ error: "not_configured", message: "Add INVENTORY_PASSCODE to this project's Edge Function secrets." }, 500);
   }
-  if (!(await samePasscode(req.headers.get("x-passcode") ?? ""))) { await sleep(500); return json({ error: "wrong_passcode" }, 401); }
+  const ok = await samePasscode(req.headers.get("x-passcode") ?? "");
+  const { data: verdict, error: gateErr } = await sb.rpc("inventory_gate", {
+    p_key: await hex("cc-ip:" + clientIp(req)), p_ok: ok, p_max: MAX_FAILS, p_window_seconds: WINDOW_S,
+  });
+  if (gateErr) return json({ error: "server", message: "Couldn't check the passcode right now." }, 500); // fail closed
+  if (verdict === "locked") {
+    await sleep(500);
+    return new Response(JSON.stringify({ error: "too_many_attempts" }), { status: 429, headers: { ...CORS, "content-type": "application/json", "Retry-After": String(WINDOW_S) } });
+  }
+  if (!ok || verdict !== "ok") { await sleep(500); return json({ error: "wrong_passcode" }, 401); }
 
   let body: Obj;
   try { body = await req.json(); } catch { return json({ error: "bad_request" }, 400); }
