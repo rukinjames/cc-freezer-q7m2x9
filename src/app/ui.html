@@ -1,0 +1,39 @@
+<div id="root">
+  <div class="shell" id="shell">
+    <header class="top">
+      <div class="brand">
+        <svg class="mark" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="18" fill="var(--accent)"/><circle cx="20" cy="20" r="12.5" fill="var(--van)"/><path d="M20 20 L20 7.5 A12.5 12.5 0 0 1 32.5 20 Z" fill="var(--choc)"/></svg>
+        <div>
+          <div class="wordmark">Campus Creamery</div>
+          <div class="status" id="status">Loading…</div>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button class="btn primary" data-act="open-count">Count</button>
+        <button class="btn" data-act="open-delivery">Add delivery</button>
+        <button class="btn" data-act="open-settings">Settings</button>
+      </div>
+    </header>
+    <div class="alerts" id="alerts"></div>
+    <div class="grid">
+      <div class="col">
+        <section class="section" id="freezer" style="order:1"><div class="empty">Loading your counts…</div></section>
+        <section class="section" id="pantry" style="order:4"></section>
+        <section class="section" id="week" style="order:5"></section>
+      </div>
+      <div class="col">
+        <section class="section" id="gordon" style="order:2"></section>
+        <section class="section" id="sams" style="order:3"></section>
+      </div>
+      <section class="section" id="activity" style="order:7"></section>
+    </div>
+    <p class="foot">Not tracked here: Cookie Crisp, Biscoff, Nutella, cups and Dairy Free. Square sales arrive about every 15 minutes. Servings per tub and mix-in amounts adjust a little with every count.</p>
+  </div>
+  <nav class="bar-bottom" aria-label="Actions">
+    <button class="btn primary" data-act="open-count">Count</button>
+    <button class="btn" data-act="open-delivery">Delivery</button>
+    <button class="btn" data-act="open-settings">Settings</button>
+  </nav>
+</div>
+<div id="sheetRoot"></div>
+<div id="toastRoot"></div>
