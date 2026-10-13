@@ -282,10 +282,15 @@ function renderSams(m) {
   const lines = Object.fromEntries(plan.basket.map(x => [x.key, x.packs]));
   const total = plan.value, fee = total < st.supplies.samsMinimum;
   const needDay = plan.orderToday ? m.today : plan.needBy;
-  const head = plan.orderToday ? "Order from Sam's Club today" : `Next Sam's Club order ${needDay ? E.DOW_LONG[E.weekday(needDay)] : "this week"}`;
+  // When something is due, say which night it would run out, so the deadline is clear at any hour.
+  const dueCover = plan.orderToday ? Math.min(...m.sup.rows.filter(r => plan.due.includes(r.key)).map(r => r.cover)) : null;
+  const runOut = dueCover == null ? null : E.addDays(m.today, dueCover);
+  const head = !plan.orderToday ? `Next Sam's Club order ${needDay ? E.DOW_LONG[E.weekday(needDay)] : "this week"}`
+    : dueCover <= 0 ? "Order from Sam's Club right away"
+    : `Order from Sam's Club, needed before ${runOut === E.addDays(m.today, 1) ? "tomorrow night" : E.DOW_LONG[E.weekday(runOut)] + " night"}`;
   S.lastSams = { lines };
   el.innerHTML = `${due}<div class="panel ${plan.orderToday ? "act" : ""}">
-    <div class="section-head"><h2>${head}</h2><span class="${plan.orderToday ? "when-chip" : "pill soon"}">${plan.orderToday ? "About 3 hours" : "Planned"}</span></div>
+    <div class="section-head"><h2>${head}</h2><span class="${plan.orderToday ? "when-chip" : "pill soon"}">${plan.orderToday ? "Order now" : "Planned"}</span></div>
     <p class="note">${plan.orderToday ? `${plan.due.map(k => nameOf(k, st)).join(" and ")} can't wait another day.` : "Nothing is urgent yet. This is what the order will look like."} Everything running low is grouped into one order with about ${st.supplies.coverTo} nights of each.</p>
     <div class="lines">${plan.basket.map(x => lineHTML(x.key, x.packs, st, x.filler ? "added to reach the delivery minimum" : `about ${x.cover} night${x.cover === 1 ? "" : "s"} left`)).join("")}</div>
     <div class="sum"><span>Total</span><span class="tnum">${money(total)}</span></div>
@@ -398,14 +403,14 @@ function renderSheet() {
     foot = `<button class="btn" data-act="close">Cancel</button><button class="btn primary" data-act="save-order">${d.edit ? "Save changes" : "Save order"}</button>`;
   } else if (sheet.kind === "arrive") {
     title = "What arrived?";
-    body = `<p class="note" style="margin-top:10px">Lower anything that came short. This adds it to stock.</p>` + Object.keys(d.lines).map(k => `<div class="crow"><div class="cname">${esc(nameOf(k, st))}</div>${stepper("a-" + k, String(d.lines[k]))}</div>`).join("");
+    body = `<p class="note" style="margin-top:10px">Lower anything that came short. This adds it to stock.</p>` + Object.keys(d.lines).map(k => `<div class="crow"><div><div class="cname">${esc(nameOf(k, st))}</div>${E.BY_KEY[k].buy ? `<div class="csub">${esc(E.BY_KEY[k].buy)}</div>` : ""}</div>${stepper("a-" + k, String(d.lines[k]))}</div>`).join("");
     foot = `<button class="btn" data-act="close">Cancel</button><button class="btn primary" data-act="save-arrive">Add to stock</button>`;
   } else if (sheet.kind === "delivery") {
     title = "Add a delivery";
     const c = E.BY_KEY[d.item];
     body = `<p class="note" style="margin-top:10px">For anything you picked up or got delivered outside an order saved here.</p>
       <div class="field"><span class="cname">Item</span><select id="delItem">${E.CATALOG.map(x => `<option value="${x.key}" ${d.item === x.key ? "selected" : ""}>${esc(nameOf(x.key, st))}</option>`).join("")}</select></div>
-      <div class="crow"><div><div class="cname">Amount</div><div class="csub">${esc(c.unit)}s${c.unitNote ? " of " + esc(c.unitNote) : ""}</div></div>${stepper("del", c.step === 1 ? String(d.qty) : fmtQ(d.qty))}</div>
+      <div class="crow"><div><div class="cname">Amount</div><div class="csub">${esc(c.unit === "box" ? "boxes" : c.unit + "s")}${c.unitNote ? " of " + esc(c.unitNote) : ""}</div></div>${stepper("del", c.step === 1 ? String(d.qty) : fmtQ(d.qty))}</div>
       <div class="field"><span class="cname">From</span><select id="delSrc"><option value="sams" ${c.supplier === "sams" ? "selected" : ""}>Sam's Club</option><option value="gordon" ${c.supplier === "gordon" ? "selected" : ""}>Gordon's</option><option value="other">Somewhere else</option></select></div>`;
     foot = `<button class="btn" data-act="close">Cancel</button><button class="btn primary" data-act="save-delivery" ${d.qty > 0 ? "" : "disabled"}>Add to stock</button>`;
   } else if (sheet.kind === "settings") {
@@ -506,7 +511,9 @@ async function saveOrder() {
 async function saveArrive() {
   const d = sheet.data, at = new Date().toISOString();
   try {
-    for (const k in d.lines) if (d.lines[k] > 0) await Store.add("deliveries", { item: k, qty: d.lines[k], at, source: d.supplier, orderId: d.id });
+    // Order lines are in store packs (a box of 48 brownie servings, a 49.5 oz cereal box);
+    // stock is kept in counting units, so convert before adding.
+    for (const k in d.lines) if (d.lines[k] > 0) await Store.add("deliveries", { item: k, qty: +(d.lines[k] * (E.BY_KEY[k].pack || 1)).toFixed(2), at, source: d.supplier, orderId: d.id });
     await Store.update("orders/" + d.id, { status: "arrived", arrivedAt: at, received: d.lines });
     closeSheet(); toast("Added to stock");
   } catch (e) { toast(dbMsg(e)); }
