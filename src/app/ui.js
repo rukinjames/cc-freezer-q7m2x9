@@ -10,7 +10,7 @@ const DEFAULTS = {
 // Business nights from Square's posted hours, Sunday first
 const HOURS = ["8 to 11 PM", "8 to 11 PM", "8 to 11 PM", "8 to 11 PM", "8 PM to 2 AM", "8 PM to 2 AM", "8 PM to 2 AM"];
 const S = { data: { settingsDoc: null, counts: [], deliveries: [], orders: [] }, canSave: false, daily: null, hourly: null,
-  sq: { state: "loading" }, lastSync: null, syncing: false, booted: false, epoch: 0 };
+  sq: { state: "loading" }, lastSync: null, syncing: false, booted: false, epoch: 0, confirmCancel: null };
 const $ = id => document.getElementById(id);
 // The app's markup. On the website it ships inside a <template>, so nothing of the app
 // is on screen until the server has accepted the passcode.
@@ -41,10 +41,20 @@ function nowStamp() { return E.localStamp(new Date()); }
 function calToday() { return nowStamp().slice(0, 10); }
 function dayWord(ds, today) { return ds === today ? "today" : ds === E.addDays(today, 1) ? "tomorrow" : E.DOW_LONG[E.weekday(ds)]; }
 function clock(hhmm) { let [h, m] = hhmm.split(":").map(Number); const ap = h >= 12 ? "PM" : "AM"; h = h % 12 || 12; return m ? `${h}:${String(m).padStart(2, "0")} ${ap}` : `${h} ${ap}`; }
-function toast(msg) {
-  $("toastRoot").innerHTML = `<div class="toast" role="status">${esc(msg)}</div>`;
-  clearTimeout(toast.t); toast.t = setTimeout(() => { $("toastRoot").innerHTML = ""; }, 3400);
+function toast(msg, action) {
+  $("toastRoot").innerHTML = `<div class="toast" role="status"><span>${esc(msg)}</span>${action ? `<button class="toast-act" data-act="${esc(action.act)}" data-id="${esc(action.id || "")}">${esc(action.label)}</button>` : ""}</div>`;
+  clearTimeout(toast.t); toast.t = setTimeout(() => { $("toastRoot").innerHTML = ""; }, action ? 8000 : 3400);
 }
+// One save at a time: a double tap must never save an order or a delivery twice.
+let saving = false;
+async function guarded(fn) {
+  if (saving) return;
+  saving = true;
+  document.querySelectorAll(".sheet footer .btn, [data-act=confirm-cancel]").forEach(b => { b.disabled = true; });
+  try { await fn(); } finally { saving = false; document.querySelectorAll(".sheet footer .btn").forEach(b => { b.disabled = false; }); }
+}
+// Sam's orders placed late in the day show up tomorrow, not "due today".
+function defaultArrival(supplier) { const ns = nowStamp(), cal = ns.slice(0, 10); return supplier === "sams" && +ns.slice(11, 13) >= 16 ? E.addDays(cal, 1) : cal; }
 function latestCounts() { const l = {}; for (const c of S.data.counts) if (!l[c.item] || c.at > l[c.item].at) l[c.item] = c; return l; }
 function lineLabel(key, qty, st) {
   const c = E.BY_KEY[key];
@@ -125,7 +135,8 @@ function model() {
     m.plan = E.planGordon({ stock: now0, soldTonight: sold, pending: m.pendingGordon, base, settings: st, nowStamp: ns });
     m.week = E.simulateWeek({ stock: now0, soldTonight: sold, pending: m.pendingGordon, todayPlan: m.plan, base, settings: st, nowStamp: ns });
   }
-  m.sup = E.planSupplies({ stock: m.stock, base, usage, settings: st, nowStamp: ns });
+  m.pendingSams = placed.filter(o => o.supplier === "sams");
+  m.sup = E.planSupplies({ stock: m.stock, base, usage, settings: st, nowStamp: ns, pending: placed });
   m.floorTonight = E.nightFloor(today, st);
   m.ready = true;
   return m;
@@ -217,8 +228,20 @@ function orderText(lines, st, supplier, extra) {
     const code = codeOf(k, st); return `${lineLabel(k, q, st)}${code ? " (item " + code + ")" : ""}`;
   }).join("\n");
 }
-function dueHTML(m, supplier) {
-  return (m.due || []).filter(o => o.supplier === supplier).map(o => {
+function cancelBox(o) {
+  return `<div class="flag now"><strong>Cancel this order?</strong><span>Do this if you didn't actually place it, or it isn't coming. The app will plan the order again.</span><div class="actions"><button class="btn primary" data-act="confirm-cancel" data-id="${esc(o.id)}">Yes, cancel it</button><button class="btn" data-act="keep-order">Keep it</button></div></div>`;
+}
+function placedCard(o, m) {
+  const st = m.st, late = o.arrivesOn < m.cal, dueNow = o.arrivesOn <= m.cal;
+  const lines = Object.entries(o.lines || {}).filter(([, q]) => q > 0);
+  return `<div class="panel">
+    <div class="section-head"><h2>${SUP[o.supplier]} order ${late ? "was due " + E.DOW_LONG[E.weekday(o.arrivesOn)] : "placed"}</h2><span class="pill ${late ? "soon" : "ok"}">${late ? "Late" : "Arrives " + dayWord(o.arrivesOn, m.cal)}</span></div>
+    <div class="lines">${lines.map(([k, q]) => lineHTML(k, q, st)).join("")}</div>
+    ${S.confirmCancel === o.id ? cancelBox(o) : `<div class="actions"><button class="btn ${dueNow ? "primary" : ""}" data-act="arrived" data-id="${esc(o.id)}">It arrived</button><button class="btn" data-act="edit-order" data-id="${esc(o.id)}">Change</button><button class="btn" data-act="cancel-order" data-id="${esc(o.id)}">Cancel order</button></div>`}
+  </div>`;
+}
+function dueHTML(m, supplier, skip) {
+  return (m.due || []).filter(o => o.supplier === supplier && !(skip || []).includes(o.id)).map(o => {
     const items = Object.entries(o.lines || {}).filter(([, q]) => q > 0).map(([k, q]) => `${q} ${nameOf(k, m.st).toLowerCase()}`).join(", ");
     const late = o.arrivesOn < m.cal;
     return `<div class="flag soon"><strong>${SUP[supplier]} delivery ${late ? "was due " + E.DOW_LONG[E.weekday(o.arrivesOn)] : "due today"}${o.window ? ", " + esc(o.window) : ""}</strong><span>${esc(items)}</span><div class="actions"><button class="btn primary" data-act="arrived" data-id="${esc(o.id)}">It arrived</button><button class="btn" data-act="notcoming" data-id="${esc(o.id)}">It didn't come</button></div></div>`;
@@ -232,7 +255,9 @@ function renderGordon(m) {
   const el = $("gordon"), st = m.st;
   if (!m.ready) { el.innerHTML = `<div class="panel"><h2>Gordon's</h2><p class="muted">${S.sq.state === "error" ? "Needs sales from Square to plan the order." : "Reading sales from Square…"}</p></div>`; return; }
   if (!m.iceKnown) { el.innerHTML = `<div class="panel"><h2>Gordon's</h2><p class="muted">Count vanilla and chocolate to get today's order.</p></div>`; return; }
-  const p = m.plan, due = dueHTML(m, "gordon"), gplan = m.sup.plans.gordon;
+  const p = m.plan, gplan = m.sup.plans.gordon;
+  const shown = p.mode === "ordered" ? m.pendingGordon.filter(o => o.arrivesOn === p.arriveOn).map(o => o.id) : [];
+  const due = dueHTML(m, "gordon", shown);
   const urgent = p.urgent.length ? `<div class="flag soon"><span>A busy night could take ${p.urgent.map(f => nameOf(f, st).toLowerCase()).join(" and ")} under tonight's floor. The next Gordon's delivery can't arrive until ${dayWord(p.arriveOn, m.cal)} afternoon.</span></div>` : "";
   S.lastGordon = null;
   if (p.mode === "order") {
@@ -260,7 +285,7 @@ function renderGordon(m) {
       <div class="section-head"><h2>Gordon's order is in</h2><span class="pill ok">Arrives ${dayWord(p.arriveOn, m.cal)}</span></div>
       <div class="lines">${items}</div>
       ${p.trim ? `<div class="flag now"><strong>Cut ${p.trim.over} ${esc(nameOf(p.trim.flavor, st).toLowerCase())} from this order.</strong><span>Tonight was slower than planned. As ordered, the freezer would hit about ${fmtQ(p.atArrival)} tubs. Change it in Gordon Ordering, then update it here.</span><div class="actions"><button class="btn primary" data-act="edit-order" data-id="${esc(id)}">Update the order</button></div></div>` : `<p class="note">The freezer should hold about ${fmtQ(p.atArrival)} of ${st.cap} tubs after it arrives.</p>`}
-      ${urgent}<div class="actions"><button class="btn" data-act="edit-order" data-id="${esc(id)}">Change quantities</button></div></div>`;
+      ${urgent}${S.confirmCancel === id ? cancelBox(os[0]) : `<div class="actions"><button class="btn ${p.arriveOn <= m.cal ? "primary" : ""}" data-act="arrived" data-id="${esc(id)}">It arrived</button><button class="btn" data-act="edit-order" data-id="${esc(id)}">Change quantities</button><button class="btn" data-act="cancel-order" data-id="${esc(id)}">Cancel order</button></div>`}</div>`;
   } else {
     const next = (m.week || []).find((n, k) => k > 0 && n.ordered);
     const nextTxt = next ? `Next order is likely ${E.DOW_LONG[E.weekday(next.ds)]} morning, about ${Object.entries(next.ordered).filter(([, q]) => q > 0).map(([k, q]) => lineLabel(k, q, st).toLowerCase()).join(" and ")} from Gordon's.` : "No Gordon's order looks needed this week.";
@@ -274,7 +299,7 @@ function renderGordon(m) {
 function renderSams(m) {
   const el = $("sams"), st = m.st;
   if (!m.ready) { el.innerHTML = ""; return; }
-  const due = dueHTML(m, "sams"), plan = m.sup.plans.sams;
+  const due = (m.pendingSams || []).map(o => placedCard(o, m)).join(""), plan = m.sup.plans.sams;
   const anyPlan = m.sup.plans.any || { basket: [], due: [], orderToday: false };
   S.lastSams = null;
   const left = x => x.filler ? "added to reach the delivery minimum" : `about ${x.cover} night${x.cover === 1 ? "" : "s"} left`;
@@ -288,7 +313,7 @@ function renderSams(m) {
     <div class="actions"><button class="btn" data-act="bought-any" data-key="${esc(anyPlan.basket[0].key)}" data-qty="${anyPlan.basket[0].packs}">I bought it</button></div></div>` : "";
   const counted = m.sup.rows.some(r => E.BY_KEY[r.key].supplier === "sams" && r.status !== "uncounted");
   if (!counted) { el.innerHTML = due + anyHTML + `<div class="panel"><h2>Sam's Club</h2><p class="muted">Count your mix-ins to plan Sam's orders.</p></div>`; return; }
-  if (!plan.basket.length) { el.innerHTML = due + anyHTML + `<div class="panel"><div class="section-head"><h2>Sam's Club</h2><span class="pill ok">Stocked</span></div><p>Nothing needed for at least ${st.supplies.topUpBelow} nights.</p><div class="actions"><button class="btn" data-act="log-sams">Log an order you placed</button></div></div>`; return; }
+  if (!plan.basket.length) { el.innerHTML = due + anyHTML + (due ? "" : `<div class="panel"><div class="section-head"><h2>Sam's Club</h2><span class="pill ok">Stocked</span></div><p>Nothing needed for at least ${st.supplies.topUpBelow} nights.</p><div class="actions"><button class="btn" data-act="log-sams">Log an order you placed</button></div></div>`); return; }
   const basket = plan.basket.concat(anyAlone ? [] : anyPlan.basket);
   const lines = Object.fromEntries(basket.map(x => [x.key, x.packs]));
   const total = plan.value, fee = total < st.supplies.samsMinimum;
@@ -337,7 +362,7 @@ function renderPantry(m) {
       }
       const pct = c.unit !== "can" && units < 1 ? `${Math.round(units * 100)}% of a ${c.key === "brownies" ? "Little Debbie box" : c.unit} left` : amt;
       const left = r.cover >= 28 ? "4+ weeks" : `${r.cover} night${r.cover === 1 ? "" : "s"}`;
-      return `<div class="good"><div class="pkgs">${icons}</div><div><div class="nm">${esc(c.name)}</div><div class="meta">${esc(pct)}</div></div><div class="right"><span class="pill ${r.status}">${label[r.status]}</span><span class="meta">${left}</span></div></div>`;
+      return `<div class="good"><div class="pkgs">${icons}</div><div><div class="nm">${esc(c.name)}</div><div class="meta">${esc(pct)}</div></div><div class="right"><span class="pill ${r.incoming > 0 ? "ok" : r.status}">${r.incoming > 0 ? "Ordered" : label[r.status]}</span><span class="meta">${left}</span></div></div>`;
     }).join("") + `</div></div>`;
   }
   const unc = rows.filter(r => r.status === "uncounted");
@@ -370,7 +395,7 @@ function renderActivity(m) {
   for (const c of S.data.counts) (byAt[c.at] ||= []).push(c);
   for (const at in byAt) ev.push({ at, t: "Counted " + byAt[at].map(c => `${nameOf(c.item, m.st).toLowerCase()} ${c.item === "brownies" || E.BY_KEY[c.item].step === 1 ? Math.round(c.value) : fmtQ(c.value)}`).join(", ") });
   for (const d of S.data.deliveries) ev.push({ at: d.at, t: `Received ${E.BY_KEY[d.item] && E.BY_KEY[d.item].step === 1 ? d.qty : fmtQ(d.qty)} ${nameOf(d.item, m.st).toLowerCase()}${SUP[d.source] ? " from " + SUP[d.source] : ""}` });
-  for (const o of S.data.orders) ev.push({ at: o.placedAt, t: `Ordered from ${SUP[o.supplier]} for ${dayWord(o.arrivesOn, m.cal)}: ${Object.entries(o.lines || {}).filter(([, q]) => q > 0).map(([k, q]) => q + " " + nameOf(k, m.st).toLowerCase()).join(", ")}${o.status === "cancelled" ? " (didn't come)" : o.status === "arrived" ? " (arrived)" : ""}` });
+  for (const o of S.data.orders) ev.push({ at: o.placedAt, t: `Ordered from ${SUP[o.supplier]} for ${dayWord(o.arrivesOn, m.cal)}: ${Object.entries(o.lines || {}).filter(([, q]) => q > 0).map(([k, q]) => q + " " + nameOf(k, m.st).toLowerCase()).join(", ")}${o.status === "cancelled" ? (o.reason === "not_coming" ? " (didn't come)" : " (cancelled)") : o.status === "arrived" ? " (arrived)" : ""}` });
   for (const n of (m.st.learnLog || []).slice(-6)) ev.push({ at: n.at, t: n.note });
   ev.sort((a, b) => (a.at < b.at ? 1 : -1));
   el.innerHTML = `<div class="section-head"><h2>Activity</h2></div>${ev.length ? `<div class="log">${ev.slice(0, 12).map(e => `<div><time>${esc(when(e.at))}</time><span>${esc(e.t)}</span></div>`).join("")}</div>` : `<div class="empty">Counts, orders and deliveries will show up here.</div>`}`;
@@ -403,12 +428,12 @@ function renderSheet() {
     const n = Object.values(d.touched).filter(Boolean).length;
     foot = `<button class="btn" data-act="close">Cancel</button><button class="btn primary" data-act="save-count" ${n ? "" : "disabled"}>${n ? `Save ${n} count${n === 1 ? "" : "s"}` : "Save counts"}</button>`;
   } else if (sheet.kind === "order") {
-    title = d.edit ? "Change the order" : `Order placed with ${SUP[d.supplier]}`;
+    title = d.edit ? "Change the order" : `Confirm your ${SUP[d.supplier]} order`;
     const cal = calToday();
-    body = `<p class="note" style="margin-top:10px">Set what you actually ordered from ${SUP[d.supplier]}.</p>` + Object.keys(d.lines).map(k => `<div class="crow"><div><div class="cname">${esc(nameOf(k, st))}</div><div class="csub">${E.BY_KEY[k].group === "ice" ? "tubs" : esc(E.BY_KEY[k].buy || "")}</div></div>${stepper("o-" + k, String(d.lines[k]))}</div>`).join("") +
+    body = `<p class="note" style="margin-top:10px">${d.edit ? "Change what's coming." : `Set what you actually ordered from ${SUP[d.supplier]}. Nothing is saved until you tap Save order.`}</p>` + Object.keys(d.lines).map(k => `<div class="crow"><div><div class="cname">${esc(nameOf(k, st))}</div><div class="csub">${E.BY_KEY[k].group === "ice" ? "tubs" : esc(E.BY_KEY[k].buy || "")}</div></div>${stepper("o-" + k, String(d.lines[k]))}</div>`).join("") +
       `<div class="field"><span class="cname">Arrives</span><select id="arrivesSel"><option value="${cal}" ${d.arrivesOn === cal ? "selected" : ""}>Today</option><option value="${E.addDays(cal, 1)}" ${d.arrivesOn === E.addDays(cal, 1) ? "selected" : ""}>Tomorrow</option></select></div>` +
       (d.supplier === "gordon" ? `<div class="field"><span class="cname">Window</span><select id="windowSel">${st.gordon.windows.map(w => `<option ${d.window === w.label ? "selected" : ""}>${esc(w.label)}</option>`).join("")}</select></div>` : "");
-    foot = `<button class="btn" data-act="close">Cancel</button><button class="btn primary" data-act="save-order">${d.edit ? "Save changes" : "Save order"}</button>`;
+    foot = `<button class="btn" data-act="close">Go back</button><button class="btn primary" data-act="save-order">${d.edit ? "Save changes" : "Save order"}</button>`;
   } else if (sheet.kind === "arrive") {
     title = "What arrived?";
     body = `<p class="note" style="margin-top:10px">Lower anything that came short. This adds it to stock.</p>` + Object.keys(d.lines).map(k => `<div class="crow"><div><div class="cname">${esc(nameOf(k, st))}</div>${E.BY_KEY[k].buy ? `<div class="csub">${esc(E.BY_KEY[k].buy)}</div>` : ""}</div>${stepper("a-" + k, String(d.lines[k]))}</div>`).join("");
@@ -511,9 +536,16 @@ async function saveOrder() {
   const lines = {}; for (const k in d.lines) if (d.lines[k] > 0) lines[k] = d.lines[k];
   if (!Object.keys(lines).length && !d.edit) return toast("Add at least one item first.");
   try {
-    if (d.edit) await Store.update("orders/" + d.id, { lines, arrivesOn, window: win || null });
-    else await Store.add("orders", { supplier: d.supplier, lines, placedAt: new Date().toISOString(), arrivesOn, window: win || null, status: "placed" });
-    closeSheet(); toast(d.edit ? "Order changed" : "Order saved");
+    if (d.edit) { await Store.update("orders/" + d.id, { lines, arrivesOn, window: win || null }); closeSheet(); toast("Order changed"); return; }
+    const id = await Store.add("orders", { supplier: d.supplier, lines, placedAt: new Date().toISOString(), arrivesOn, window: win || null, status: "placed" });
+    closeSheet(); toast("Order saved", id ? { label: "Undo", act: "undo-order", id } : null);
+  } catch (e) { toast(dbMsg(e)); }
+}
+async function cancelOrder(id, reason) {
+  try {
+    await Store.update("orders/" + id, { status: "cancelled", cancelledAt: new Date().toISOString(), reason });
+    S.confirmCancel = null; render();
+    toast(reason === "not_coming" ? "Marked as not coming" : reason === "undo" ? "Order removed" : "Order cancelled");
   } catch (e) { toast(dbMsg(e)); }
 }
 async function saveArrive() {
@@ -591,20 +623,24 @@ document.addEventListener("click", e => {
     case "bought-any": openSheet("delivery", { item: el.dataset.key, qty: +el.dataset.qty || 1 }); break;
     case "open-settings": openSheet("settings", JSON.parse(JSON.stringify(settings()))); break;
     case "place-gordon": if (S.lastGordon) openSheet("order", { supplier: "gordon", lines: Object.assign({}, S.lastGordon.lines), arrivesOn: S.lastGordon.arriveOn, window: S.lastGordon.window }); break;
-    case "place-sams": if (S.lastSams) openSheet("order", { supplier: "sams", lines: Object.assign({}, S.lastSams.lines), arrivesOn: calToday() }); break;
+    case "place-sams": if (S.lastSams) openSheet("order", { supplier: "sams", lines: Object.assign({}, S.lastSams.lines), arrivesOn: defaultArrival("sams") }); break;
     case "copy-gordon": if (S.lastGordon) copyText(orderText(S.lastGordon.lines, settings(), "gordon", `deliver ${dayWord(S.lastGordon.arriveOn, calToday())} ${S.lastGordon.window}`)); break;
     case "log-gordon": { const st = settings(), ns = nowStamp(), late = st.gordon.windows[st.gordon.windows.length - 1]; const lines = { vanilla: 0, chocolate: 0 }; if (exOn(st)) lines.exclusive = 0; lines.bananas = 0;
       openSheet("order", { supplier: "gordon", lines, arrivesOn: ns.slice(11, 16) < late.cutoff ? ns.slice(0, 10) : E.addDays(ns.slice(0, 10), 1), window: late.label }); break; }
-    case "log-sams": { const lines = {}; E.CATALOG.filter(c => c.supplier === "sams" || c.supplier === "any").forEach(c => { lines[c.key] = 0; }); openSheet("order", { supplier: "sams", lines, arrivesOn: calToday() }); break; }
+    case "log-sams": { const lines = {}; E.CATALOG.filter(c => c.supplier === "sams" || c.supplier === "any").forEach(c => { lines[c.key] = 0; }); openSheet("order", { supplier: "sams", lines, arrivesOn: defaultArrival("sams") }); break; }
     case "copy-sams": if (S.lastSams) copyText(orderText(S.lastSams.lines, settings(), "sams")); break;
     case "edit-order": { const o = S.data.orders.find(x => x.id === el.dataset.id); if (o) openSheet("order", { edit: true, id: o.id, supplier: o.supplier, lines: Object.assign({}, o.lines), arrivesOn: o.arrivesOn, window: o.window }); break; }
     case "arrived": { const o = S.data.orders.find(x => x.id === el.dataset.id); if (o) openSheet("arrive", { id: o.id, supplier: o.supplier, lines: Object.assign({}, o.lines) }); break; }
-    case "notcoming": Store.update("orders/" + el.dataset.id, { status: "cancelled" }).then(() => toast("Marked as not coming"), err => toast(dbMsg(err))); break;
-    case "save-count": saveCount(); break;
-    case "save-order": saveOrder(); break;
-    case "save-arrive": saveArrive(); break;
-    case "save-delivery": saveDelivery(); break;
-    case "save-settings": saveSettings(); break;
+    case "notcoming": guarded(() => cancelOrder(el.dataset.id, "not_coming")); break;
+    case "cancel-order": S.confirmCancel = el.dataset.id; render(); break;
+    case "keep-order": S.confirmCancel = null; render(); break;
+    case "confirm-cancel": guarded(() => cancelOrder(el.dataset.id, "not_placed")); break;
+    case "undo-order": $("toastRoot").innerHTML = ""; guarded(() => cancelOrder(el.dataset.id, "undo")); break;
+    case "save-count": guarded(saveCount); break;
+    case "save-order": guarded(saveOrder); break;
+    case "save-arrive": guarded(saveArrive); break;
+    case "save-delivery": guarded(saveDelivery); break;
+    case "save-settings": guarded(saveSettings); break;
     case "add-closed": { const v = $("s-cdate").value; if (v) { draftSettings(); if (!sheet.data.closedDates.includes(v)) sheet.data.closedDates.push(v); renderSheet(); } break; }
     case "rm-closed": draftSettings(); sheet.data.closedDates = sheet.data.closedDates.filter(x => x !== el.dataset.ds); renderSheet(); break;
     case "signout": lockOut(); break;
@@ -637,7 +673,7 @@ function wipe() {
   if (Store.signOut) Store.signOut();
   S.data = { settingsDoc: null, counts: [], deliveries: [], orders: [] };
   S.daily = null; S.hourly = null; S.truncated = false; S.lastSync = null;
-  S.booted = false; S.canSave = false; S.syncing = false; S.sq = { state: "loading" };
+  S.booted = false; S.canSave = false; S.syncing = false; S.sq = { state: "loading" }; S.confirmCancel = null;
 }
 function lockOut(msg) { wipe(); gate(msg); }
 function gate(err) {

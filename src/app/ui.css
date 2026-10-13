@@ -189,7 +189,8 @@ input[type="number"], input[type="date"], input[type="password"], input[type="te
 input[type="number"] { width: 6.5em; font-variant-numeric: tabular-nums; }
 .toggle { display: inline-flex; align-items: center; gap: 10px; font-weight: 600; }
 .toggle input { width: 22px; height: 22px; accent-color: var(--accent); }
-.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(86px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--ground); padding: 11px 16px; border-radius: 12px; font-weight: 600; z-index: 20; max-width: calc(100% - 32px); }
+.toast-act { margin-left: 12px; background: transparent; color: inherit; border: 1px solid currentColor; border-radius: 8px; padding: 4px 10px; font: inherit; font-weight: 700; cursor: pointer; }
+.toast { display: flex; align-items: center; position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(86px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--ground); padding: 11px 16px; border-radius: 12px; font-weight: 600; z-index: 20; max-width: calc(100% - 32px); }
 
 /* passcode */
 .gate { min-height: 100vh; min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 24px 16px; }

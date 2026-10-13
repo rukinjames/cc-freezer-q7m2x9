@@ -68,7 +68,7 @@ const Store = (() => {
       return { ok: true, canSave: true, canSales: true };
     },
     async sales(request) { const j = await call("sales", { query: request.query }); return { rows: j.data || [], at: Date.now() }; },
-    async add(col, data) { await call("add", { collection: col, data }); await refresh(); },
+    async add(col, data) { const j = await call("add", { collection: col, data }); await refresh(); return j && j.id; },
     async set(path, data) { const [c, id] = path.split("/"); await call("set", { collection: c, id, data }); await refresh(); },
     async update(path, data) { const [c, id] = path.split("/"); await call("update", { collection: c, id, data }); await refresh(); },
   };

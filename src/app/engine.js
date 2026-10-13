@@ -292,19 +292,26 @@ const Engine = (() => {
   // An order goes in only when something can't safely wait another day. Then
   // everything running low rides along, topped up to about two weeks, and the
   // basket is filled to the free-delivery minimum with the next items due.
-  function planSupplies({ stock, base, usage, settings: st, nowStamp }) {
+  // Orders already placed (not yet arrived) count as on the way, so a placed
+  // order stops the app from asking for the same things again.
+  function planSupplies({ stock, base, usage, settings: st, nowStamp, pending }) {
     const biz = stampBusinessDate(nowStamp);
     const items = CATALOG.filter(c => c.group !== "ice");
+    const incoming = {};
+    for (const o of pending || []) for (const [k, q] of Object.entries(o.lines || {})) {
+      if (BY_KEY[k] && BY_KEY[k].group !== "ice" && q > 0) incoming[k] = (incoming[k] || 0) + q * (BY_KEY[k].pack || 1);
+    }
     const rows = [];
     for (const c of items) {
       const nightsFc = []; for (let k = 0; k < 28; k++) nightsFc.push(mixNight(c.key, addDays(biz, k), base, usage, st, biz));
       const avg = nightsFc.slice(0, 14).reduce((s, n) => s + n.mean, 0) / 14;
       const s = stock[c.key];
       if (!s) { rows.push({ key: c.key, status: "uncounted", avg }); continue; }
-      let left = Math.max(0, s.value), cover = 28;
+      const inc = incoming[c.key] || 0;
+      let left = Math.max(0, s.value) + inc, cover = 28;
       for (let k = 0; k < 28; k++) { left -= nightsFc[k].hi; if (left < 0) { cover = k; break; } }
       const status = cover <= 2 ? "now" : cover <= 6 ? "soon" : "ok";
-      rows.push({ key: c.key, stock: s.value, cover, status, avg, nightsFc });
+      rows.push({ key: c.key, stock: s.value, incoming: inc, cover, status, avg, nightsFc });
     }
     const plans = {};
     for (const sup of ["sams", "gordon", "any"]) {
@@ -314,7 +321,7 @@ const Engine = (() => {
       const needBy = minCover >= 28 ? null : addDays(biz, Math.max(0, minCover - 2));
       const basket = mine.filter(r => r.cover < st.supplies.topUpBelow).map(r => {
         const c = BY_KEY[r.key];
-        const need = r.nightsFc.slice(0, st.supplies.coverTo).reduce((s, n) => s + n.mean, 0) + r.nightsFc[0].hi + r.nightsFc[1].hi - Math.max(0, r.stock);
+        const need = r.nightsFc.slice(0, st.supplies.coverTo).reduce((s, n) => s + n.mean, 0) + r.nightsFc[0].hi + r.nightsFc[1].hi - Math.max(0, r.stock) - r.incoming;
         return { key: r.key, packs: Math.max(1, Math.ceil(need / c.pack - 1e-9)), cover: r.cover };
       }).filter(x => x.packs > 0);
       const value = () => basket.reduce((s, x) => s + x.packs * BY_KEY[x.key].price, 0);
