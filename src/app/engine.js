@@ -24,6 +24,7 @@ const Engine = (() => {
     { key: "frootloops", name: "Froot Loops", group: "mix", shelf: "cereal", color: "#c94f9d", unit: "box", unitNote: "about 19 oz, a 43.6 oz Sam's box counts as 2¼", perUnit: 42, supplier: "sams", buy: "Froot Loops, 43.6 oz", pack: 2.29, price: 8.58, step: 0.25 },
     { key: "frostedflakes", name: "Frosted Flakes", group: "mix", shelf: "cereal", color: "#2f8fd0", unit: "box", unitNote: "about 19 oz, a 55 oz Sam's box counts as 3", perUnit: 42, supplier: "sams", buy: "Frosted Flakes, 55 oz", pack: 2.89, price: 7.88, step: 0.25 },
     { key: "honeynut", name: "Honey Nut Cheerios", group: "mix", shelf: "cereal", color: "#e3b23c", unit: "box", unitNote: "about 19 oz, a 48 oz Sam's box counts as 2½", perUnit: 42, supplier: "sams", buy: "Honey Nut Cheerios, 48 oz", pack: 2.53, price: 7.64, step: 0.25 },
+    { key: "cookiecrisp", name: "Cookie Crisp", group: "mix", shelf: "cereal", color: "#a8742f", unit: "box", unitNote: "about 19 oz, a regular store box", perUnit: 42, supplier: "any", buy: "Cookie Crisp", pack: 1, price: 0, step: 0.25 },
     { key: "graham", name: "Graham crackers", group: "mix", shelf: "cookies", color: "#b9874f", unit: "pack", unitNote: "4 boxes, about 208 half crackers", perUnit: 208, supplier: "sams", buy: "Honey Maid Graham Crackers, 4-pack", pack: 1, price: 8.98, step: 0.25 },
     { key: "matcha", name: "Matcha", group: "mix", shelf: "other", color: "#6f9a4a", unit: "bag", unitNote: "14.1 oz", perUnit: 110, supplier: "sams", buy: "Jade Leaf Matcha Latte Mix, 14.1 oz", pack: 1, price: 19.48, step: 0.25 },
     { key: "granola", name: "Granola", group: "mix", shelf: "other", color: "#b08a52", unit: "bag", unitNote: "32 oz", perUnit: 50, supplier: "sams", buy: "Member's Mark Honey Almond Granola, 32 oz", pack: 1, price: 6.56, step: 0.25 },
@@ -44,10 +45,10 @@ const Engine = (() => {
     "Frozen Blueberries": "blueberries", "Frozen Bananas": "bananas", "Cinnamon Toast Crunch": "ctc",
     "Fruity Pebbles": "fruitypebbles", "Cap'n Crunch": "capncrunch", "Reece's Puffs": "reesespuffs",
     "Reese's Puffs": "reesespuffs", "Cocoa Puffs": "cocoapuffs", "Froot Loops": "frootloops",
-    "Frosted Flakes": "frostedflakes", "Honey Nut Cheerios": "honeynut", "Graham Crackers": "graham",
+    "Frosted Flakes": "frostedflakes", "Honey Nut Cheerios": "honeynut", "Graham Crackers": "graham", "Cookie Crisp": "cookiecrisp",
     "Matcha": "matcha", "Granola": "granola",
   };
-  const MANUAL = new Set(["Cookie Crisp", "Biscoff", "Nutella", "Dairy Free Vanilla", "Cone"]);
+  const MANUAL = new Set(["Biscoff", "Nutella", "Dairy Free Vanilla", "Cone"]);
   const BASE_MAP = { "Vanilla": "vanilla", "Chocolate": "chocolate", "Exclusive": "exclusive" };
 
   function usageOfRow(list, mod, item, qty) {
@@ -306,7 +307,7 @@ const Engine = (() => {
       rows.push({ key: c.key, stock: s.value, cover, status, avg, nightsFc });
     }
     const plans = {};
-    for (const sup of ["sams", "gordon"]) {
+    for (const sup of ["sams", "gordon", "any"]) {
       const mine = rows.filter(r => BY_KEY[r.key].supplier === sup && r.status !== "uncounted");
       const due = mine.filter(r => r.cover <= 2);
       const minCover = mine.length ? Math.min(...mine.map(r => r.cover)) : 28;
@@ -317,7 +318,8 @@ const Engine = (() => {
         return { key: r.key, packs: Math.max(1, Math.ceil(need / c.pack - 1e-9)), cover: r.cover };
       }).filter(x => x.packs > 0);
       const value = () => basket.reduce((s, x) => s + x.packs * BY_KEY[x.key].price, 0);
-      if (sup === "sams") {
+      // Pad toward the delivery minimum only when a real order exists; never invent one.
+      if (sup === "sams" && basket.length) {
         const extra = mine.filter(r => !basket.find(b => b.key === r.key) && r.cover < 28).sort((a, b) => a.cover - b.cover);
         for (const r of extra) { if (value() >= st.supplies.samsMinimum) break; basket.push({ key: r.key, packs: 1, cover: r.cover, filler: true }); }
       }

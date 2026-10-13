@@ -209,7 +209,7 @@ function renderFreezer(m) {
 function lineHTML(key, qty, st, note) {
   const c = E.BY_KEY[key], code = codeOf(key, st), price = priceOf(key, st);
   const label = c.group === "ice" ? `${nameOf(key, st)} tub${qty === 1 ? "" : "s"}` : (c.buy || c.name);
-  const sub = [`from ${SUP[c.supplier]}`, code ? `item ${code}` : "", note || ""].filter(Boolean).join(", ");
+  const sub = [SUP[c.supplier] ? `from ${SUP[c.supplier]}` : "", code ? `item ${code}` : "", note || ""].filter(Boolean).join(", ");
   return `<div class="line"><span class="q">${qty}</span><span class="what">${esc(label)}<br><span class="code">${esc(sub)}</span></span><span class="cost">${price ? money(qty * price) : ""}</span></div>`;
 }
 function orderText(lines, st, supplier, extra) {
@@ -275,24 +275,32 @@ function renderSams(m) {
   const el = $("sams"), st = m.st;
   if (!m.ready) { el.innerHTML = ""; return; }
   const due = dueHTML(m, "sams"), plan = m.sup.plans.sams;
+  const anyPlan = m.sup.plans.any || { basket: [], due: [], orderToday: false };
   S.lastSams = null;
+  const left = x => x.filler ? "added to reach the delivery minimum" : `about ${x.cover} night${x.cover === 1 ? "" : "s"} left`;
+  const coverOf = keys => Math.min(...m.sup.rows.filter(r => keys.includes(r.key)).map(r => r.cover));
+  const byWhen = cover => { const d = E.addDays(m.today, cover); return cover <= 0 ? "right away" : `before ${d === E.addDays(m.today, 1) ? "tomorrow night" : E.DOW_LONG[E.weekday(d)] + " night"}`; };
+  // Items bought at any store (Cookie Crisp) ride along with a Sam's order. If one runs low
+  // while nothing from Sam's is due, it gets its own short card instead of forcing a Sam's order.
+  const anyAlone = anyPlan.orderToday && !plan.orderToday;
+  const anyHTML = anyAlone ? `<div class="panel act"><div class="section-head"><h2>Buy ${anyPlan.basket.map(x => nameOf(x.key, st)).join(" and ")} ${byWhen(coverOf(anyPlan.due))}</h2><span class="when-chip">Buy now</span></div>
+    <div class="lines">${anyPlan.basket.map(x => lineHTML(x.key, x.packs, st, left(x))).join("")}</div>
+    <div class="actions"><button class="btn" data-act="bought-any" data-key="${esc(anyPlan.basket[0].key)}" data-qty="${anyPlan.basket[0].packs}">I bought it</button></div></div>` : "";
   const counted = m.sup.rows.some(r => E.BY_KEY[r.key].supplier === "sams" && r.status !== "uncounted");
-  if (!counted) { el.innerHTML = due + `<div class="panel"><h2>Sam's Club</h2><p class="muted">Count your mix-ins to plan Sam's orders.</p></div>`; return; }
-  if (!plan.basket.length) { el.innerHTML = due + `<div class="panel"><div class="section-head"><h2>Sam's Club</h2><span class="pill ok">Stocked</span></div><p>Nothing needed for at least ${st.supplies.topUpBelow} nights.</p><div class="actions"><button class="btn" data-act="log-sams">Log an order you placed</button></div></div>`; return; }
-  const lines = Object.fromEntries(plan.basket.map(x => [x.key, x.packs]));
+  if (!counted) { el.innerHTML = due + anyHTML + `<div class="panel"><h2>Sam's Club</h2><p class="muted">Count your mix-ins to plan Sam's orders.</p></div>`; return; }
+  if (!plan.basket.length) { el.innerHTML = due + anyHTML + `<div class="panel"><div class="section-head"><h2>Sam's Club</h2><span class="pill ok">Stocked</span></div><p>Nothing needed for at least ${st.supplies.topUpBelow} nights.</p><div class="actions"><button class="btn" data-act="log-sams">Log an order you placed</button></div></div>`; return; }
+  const basket = plan.basket.concat(anyAlone ? [] : anyPlan.basket);
+  const lines = Object.fromEntries(basket.map(x => [x.key, x.packs]));
   const total = plan.value, fee = total < st.supplies.samsMinimum;
   const needDay = plan.orderToday ? m.today : plan.needBy;
+  const dueKeys = plan.due.concat(anyAlone ? [] : anyPlan.due);
   // When something is due, say which night it would run out, so the deadline is clear at any hour.
-  const dueCover = plan.orderToday ? Math.min(...m.sup.rows.filter(r => plan.due.includes(r.key)).map(r => r.cover)) : null;
-  const runOut = dueCover == null ? null : E.addDays(m.today, dueCover);
-  const head = !plan.orderToday ? `Next Sam's Club order ${needDay ? E.DOW_LONG[E.weekday(needDay)] : "this week"}`
-    : dueCover <= 0 ? "Order from Sam's Club right away"
-    : `Order from Sam's Club, needed before ${runOut === E.addDays(m.today, 1) ? "tomorrow night" : E.DOW_LONG[E.weekday(runOut)] + " night"}`;
+  const head = !plan.orderToday ? `Next Sam's Club order ${needDay ? E.DOW_LONG[E.weekday(needDay)] : "this week"}` : `Order from Sam's Club ${byWhen(coverOf(dueKeys))}`.replace("Club before", "Club, needed before");
   S.lastSams = { lines };
-  el.innerHTML = `${due}<div class="panel ${plan.orderToday ? "act" : ""}">
+  el.innerHTML = `${due}${anyHTML}<div class="panel ${plan.orderToday ? "act" : ""}">
     <div class="section-head"><h2>${head}</h2><span class="${plan.orderToday ? "when-chip" : "pill soon"}">${plan.orderToday ? "Order now" : "Planned"}</span></div>
-    <p class="note">${plan.orderToday ? `${plan.due.map(k => nameOf(k, st)).join(" and ")} can't wait another day.` : "Nothing is urgent yet. This is what the order will look like."} Everything running low is grouped into one order with about ${st.supplies.coverTo} nights of each.</p>
-    <div class="lines">${plan.basket.map(x => lineHTML(x.key, x.packs, st, x.filler ? "added to reach the delivery minimum" : `about ${x.cover} night${x.cover === 1 ? "" : "s"} left`)).join("")}</div>
+    <p class="note">${plan.orderToday ? `${dueKeys.map(k => nameOf(k, st)).join(" and ")} can't wait another day.` : "Nothing is urgent yet. This is what the order will look like."} Everything running low is grouped into one order with about ${st.supplies.coverTo} nights of each.</p>
+    <div class="lines">${basket.map(x => lineHTML(x.key, x.packs, st, left(x))).join("")}</div>
     <div class="sum"><span>Total</span><span class="tnum">${money(total)}</span></div>
     ${fee ? `<div class="flag soon"><span>Still under ${money(st.supplies.samsMinimum)}, so Sam's may add a delivery fee.</span></div>` : ""}
     <div class="actions">${plan.orderToday ? `<button class="btn primary" data-act="place-sams">I placed this order</button>` : ""}<button class="btn" data-act="copy-sams">Copy list</button>${!plan.orderToday ? `<button class="btn" data-act="place-sams">Order it now anyway</button>` : ""}</div></div>`;
@@ -411,7 +419,7 @@ function renderSheet() {
     body = `<p class="note" style="margin-top:10px">For anything you picked up or got delivered outside an order saved here.</p>
       <div class="field"><span class="cname">Item</span><select id="delItem">${E.CATALOG.map(x => `<option value="${x.key}" ${d.item === x.key ? "selected" : ""}>${esc(nameOf(x.key, st))}</option>`).join("")}</select></div>
       <div class="crow"><div><div class="cname">Amount</div><div class="csub">${esc(c.unit === "box" ? "boxes" : c.unit + "s")}${c.unitNote ? " of " + esc(c.unitNote) : ""}</div></div>${stepper("del", c.step === 1 ? String(d.qty) : fmtQ(d.qty))}</div>
-      <div class="field"><span class="cname">From</span><select id="delSrc"><option value="sams" ${c.supplier === "sams" ? "selected" : ""}>Sam's Club</option><option value="gordon" ${c.supplier === "gordon" ? "selected" : ""}>Gordon's</option><option value="other">Somewhere else</option></select></div>`;
+      <div class="field"><span class="cname">From</span><select id="delSrc"><option value="sams" ${c.supplier === "sams" ? "selected" : ""}>Sam's Club</option><option value="gordon" ${c.supplier === "gordon" ? "selected" : ""}>Gordon's</option><option value="other" ${c.supplier === "any" ? "selected" : ""}>Somewhere else</option></select></div>`;
     foot = `<button class="btn" data-act="close">Cancel</button><button class="btn primary" data-act="save-delivery" ${d.qty > 0 ? "" : "disabled"}>Add to stock</button>`;
   } else if (sheet.kind === "settings") {
     title = "Settings";
@@ -580,13 +588,14 @@ document.addEventListener("click", e => {
     case "refresh": syncSquare(true); break;
     case "open-count": openCount(); break;
     case "open-delivery": openSheet("delivery", { item: "oreos", qty: 1 }); break;
+    case "bought-any": openSheet("delivery", { item: el.dataset.key, qty: +el.dataset.qty || 1 }); break;
     case "open-settings": openSheet("settings", JSON.parse(JSON.stringify(settings()))); break;
     case "place-gordon": if (S.lastGordon) openSheet("order", { supplier: "gordon", lines: Object.assign({}, S.lastGordon.lines), arrivesOn: S.lastGordon.arriveOn, window: S.lastGordon.window }); break;
     case "place-sams": if (S.lastSams) openSheet("order", { supplier: "sams", lines: Object.assign({}, S.lastSams.lines), arrivesOn: calToday() }); break;
     case "copy-gordon": if (S.lastGordon) copyText(orderText(S.lastGordon.lines, settings(), "gordon", `deliver ${dayWord(S.lastGordon.arriveOn, calToday())} ${S.lastGordon.window}`)); break;
     case "log-gordon": { const st = settings(), ns = nowStamp(), late = st.gordon.windows[st.gordon.windows.length - 1]; const lines = { vanilla: 0, chocolate: 0 }; if (exOn(st)) lines.exclusive = 0; lines.bananas = 0;
       openSheet("order", { supplier: "gordon", lines, arrivesOn: ns.slice(11, 16) < late.cutoff ? ns.slice(0, 10) : E.addDays(ns.slice(0, 10), 1), window: late.label }); break; }
-    case "log-sams": { const lines = {}; E.CATALOG.filter(c => c.supplier === "sams").forEach(c => { lines[c.key] = 0; }); openSheet("order", { supplier: "sams", lines, arrivesOn: calToday() }); break; }
+    case "log-sams": { const lines = {}; E.CATALOG.filter(c => c.supplier === "sams" || c.supplier === "any").forEach(c => { lines[c.key] = 0; }); openSheet("order", { supplier: "sams", lines, arrivesOn: calToday() }); break; }
     case "copy-sams": if (S.lastSams) copyText(orderText(S.lastSams.lines, settings(), "sams")); break;
     case "edit-order": { const o = S.data.orders.find(x => x.id === el.dataset.id); if (o) openSheet("order", { edit: true, id: o.id, supplier: o.supplier, lines: Object.assign({}, o.lines), arrivesOn: o.arrivesOn, window: o.window }); break; }
     case "arrived": { const o = S.data.orders.find(x => x.id === el.dataset.id); if (o) openSheet("arrive", { id: o.id, supplier: o.supplier, lines: Object.assign({}, o.lines) }); break; }
