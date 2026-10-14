@@ -214,3 +214,10 @@ input[type="number"] { width: 6.5em; font-variant-numeric: tabular-nums; }
 }
 @media (max-width: 380px) { .freezer-well { gap: 5px; padding: 9px; } .freezer { padding: 7px; } }
 @media (prefers-reduced-motion: no-preference) { .lid .wedge { transition: d 0.4s ease; } .seg i { transition: width 0.4s ease; } }
+
+.btn.small { min-height: 34px; padding: 4px 10px; font-size: 0.85rem; align-self: flex-start; margin-top: 4px; }
+.field input[type=text] { width: 100%; max-width: 240px; }
+.meter .floormark.end { transform: translateX(-100%); }
+.meter .floormark.end::after { left: auto; right: -1px; }
+.meter .floormark.start { transform: none; }
+.meter .floormark.start::after { left: -1px; }

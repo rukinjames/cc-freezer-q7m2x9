@@ -4,7 +4,7 @@ const DEFAULTS = {
   cap: 18, floors: { sunWed: 6, thuSat: 10 },
   gordon: { windows: [{ label: "10 AM to 2 PM", cutoff: "09:30" }, { label: "2 to 5 PM", cutoff: "13:00" }], minimum: 75, fee: 10 },
   supplies: { topUpBelow: 10, coverTo: 14, samsMinimum: 50 },
-  exclusive: { active: false, name: "Mint Chocolate Chip", code: "442845", price: 42.28, target: 2 },
+  exclusive: { active: false, name: "", since: null },
   yields: { vanilla: 21, chocolate: 25, exclusive: 22 }, adjust: {}, closedDates: [], learnLog: []
 };
 // Business nights from Square's posted hours, Sunday first
@@ -33,9 +33,16 @@ function settings() {
   return s;
 }
 const exOn = st => !!(st.exclusive && st.exclusive.active);
-function nameOf(key, st) { return key === "exclusive" ? (exOn(st) ? st.exclusive.name : "Exclusive") : E.BY_KEY[key].name; }
-function codeOf(key, st) { return key === "exclusive" ? (st.exclusive.code || "") : (E.BY_KEY[key].code || ""); }
-function priceOf(key, st) { return key === "exclusive" ? (+st.exclusive.price || 0) : E.BY_KEY[key].price; }
+function nameOf(key, st) { return key === "exclusive" ? (exOn(st) && st.exclusive.name ? st.exclusive.name : "Exclusive") : E.BY_KEY[key].name; }
+// The exclusive is restocked by hand, so it carries no item code or price here.
+function codeOf(key, st) { return key === "exclusive" ? "" : (E.BY_KEY[key].code || ""); }
+function priceOf(key, st) { return key === "exclusive" ? 0 : E.BY_KEY[key].price; }
+// Counts of the exclusive from before the current flavor started don't apply to it.
+function countsFor(st) {
+  const since = exOn(st) ? st.exclusive.since : null;
+  const name = exOn(st) ? (st.exclusive.name || "").toLowerCase() : "";
+  return S.data.counts.filter(c => c.item !== "exclusive" || (exOn(st) && (!since || c.at >= since) && (c.name == null || c.name.toLowerCase() === name)));
+}
 function when(iso) { return new Date(iso).toLocaleString("en-US", { timeZone: E.TZ, weekday: "short", hour: "numeric", minute: "2-digit" }); }
 function nowStamp() { return E.localStamp(new Date()); }
 function calToday() { return nowStamp().slice(0, 10); }
@@ -55,7 +62,7 @@ async function guarded(fn) {
 }
 // Sam's orders placed late in the day show up tomorrow, not "due today".
 function defaultArrival(supplier) { const ns = nowStamp(), cal = ns.slice(0, 10); return supplier === "sams" && +ns.slice(11, 13) >= 16 ? E.addDays(cal, 1) : cal; }
-function latestCounts() { const l = {}; for (const c of S.data.counts) if (!l[c.item] || c.at > l[c.item].at) l[c.item] = c; return l; }
+function latestCounts(list) { const l = {}; for (const c of (list || S.data.counts)) if (!l[c.item] || c.at > l[c.item].at) l[c.item] = c; return l; }
 function lineLabel(key, qty, st) {
   const c = E.BY_KEY[key];
   return c.group === "ice" ? `${qty} ${nameOf(key, st)} tub${qty === 1 ? "" : "s"}` : `${qty} × ${c.buy || c.name}`;
@@ -118,7 +125,7 @@ function model() {
   const m = { st, today, cal, ns, ready: false };
   if (!S.daily || !S.hourly) return m;
   const { base, usage } = E.dailyTables(S.daily);
-  const est = E.estimates(S.data.counts, S.data.deliveries, S.hourly, st);
+  const est = E.estimates(countsFor(st), S.data.deliveries, S.hourly, st);
   Object.assign(m, { base, usage, stock: est.stock, unmapped: est.unmapped });
   const sold = {}, start = today + "T04:00:00";
   for (const r of S.hourly) if (r.hour >= start && r.list === "Ice Cream Base") {
@@ -127,13 +134,24 @@ function model() {
   m.soldTonight = sold;
   const placed = S.data.orders.filter(o => o.status === "placed");
   m.due = placed.filter(o => o.arrivesOn <= cal);
-  m.pendingGordon = placed.filter(o => o.supplier === "gordon");
+  // A Gordon's order that was due before today and never confirmed isn't counted as stock;
+  // its banner asks whether it arrived.
+  m.pendingGordon = placed.filter(o => o.supplier === "gordon" && o.arrivesOn >= cal);
   m.iceKnown = ["vanilla", "chocolate"].every(k => m.stock[k]);
   if (m.iceKnown) {
     const now0 = {}; for (const f of E.ICE) now0[f] = m.stock[f] ? Math.max(0, m.stock[f].value) : 0;
     m.stockNow = now0;
     m.plan = E.planGordon({ stock: now0, soldTonight: sold, pending: m.pendingGordon, base, settings: st, nowStamp: ns });
     m.week = E.simulateWeek({ stock: now0, soldTonight: sold, pending: m.pendingGordon, todayPlan: m.plan, base, settings: st, nowStamp: ns });
+  }
+  if (exOn(st) && m.stock.exclusive) {
+    // Nights the exclusive lasts at an average pace (it is never reordered by the app)
+    let left = Math.max(0, m.stock.exclusive.value), k = 0;
+    for (; k < 28 && left > 0.05; k++) {
+      const ds = E.addDays(today, k), f = E.forecastNight(ds, base, st, today);
+      left -= k === 0 ? Math.max(0, f.mean.exclusive - (sold.exclusive || 0) / st.yields.exclusive) : f.mean.exclusive;
+    }
+    m.exNights = k;
   }
   m.pendingSams = placed.filter(o => o.supplier === "sams");
   m.sup = E.planSupplies({ stock: m.stock, base, usage, settings: st, nowStamp: ns, pending: placed });
@@ -145,9 +163,15 @@ function model() {
 // ---------- render ----------
 function renderStatus() {
   if (!$("status")) return;
-  const st = settings(), today = E.businessDate(new Date());
+  const st = settings(), today = E.businessDate(new Date()), ns = nowStamp();
   const closed = (st.closedDates || []).includes(today);
-  const open = closed ? "Closed tonight" : `Open tonight ${HOURS[E.weekday(today)]}`;
+  // Hours run past midnight on Thursday to Saturday, so time is measured from the business day's start
+  const h = +ns.slice(11, 13) + +ns.slice(14, 16) / 60, t = h < 4 ? h + 24 : h, wd = E.weekday(today);
+  const closeAt = wd >= 4 ? 26 : 23, untilTxt = wd >= 4 ? "2 AM" : "11 PM", next = E.addDays(today, 1);
+  const open = closed ? "Closed tonight"
+    : t < 20 ? `Open tonight ${HOURS[wd]}`
+    : t < closeAt ? `Open now until ${untilTxt}`
+    : (st.closedDates || []).includes(next) ? "Closed for the night" : `Closed for the night. Open ${E.DOW_LONG[E.weekday(next)]} ${HOURS[E.weekday(next)]}`;
   let sync;
   if (S.syncing) sync = `<span><span class="dot wait"></span>Updating sales…</span>`;
   else if (S.sq.state === "ok") { const ago = Math.max(0, Math.round((Date.now() - S.lastSync) / 60000)); sync = `<span><span class="dot ok"></span>Sales updated ${ago < 1 ? "just now" : ago + " min ago"}</span>`; }
@@ -181,12 +205,12 @@ function lidSVG(kind, frac, over) {
   return `<svg class="lid" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" fill="var(--surface)" stroke="${rim}" stroke-width="${over ? 6 : 4}"/>${inner}<circle cx="50" cy="50" r="39" fill="none" stroke="${rim}" stroke-opacity="0.35" stroke-width="1.5"/></svg>`;
 }
 function renderFreezer(m) {
-  const el = $("freezer"), st = m.st, lc = latestCounts();
+  const el = $("freezer"), st = m.st, lc = latestCounts(countsFor(m.st));
   if (!lc.vanilla || !lc.chocolate) {
     el.innerHTML = `<div class="section-head"><h2>Freezer</h2></div><div class="empty">No ice cream count yet. Tap <strong>Count</strong> and enter the tubs of each flavor, in quarters.</div>`;
     return;
   }
-  const val = k => m.stock && m.stock[k] ? Math.max(0, m.stock[k].value) : (lc[k] ? lc[k].value : 0);
+  const val = k => k === "exclusive" && !exOn(st) ? 0 : m.stock && m.stock[k] ? Math.max(0, m.stock[k].value) : (lc[k] ? lc[k].value : 0);
   const v = val("vanilla"), c = val("chocolate"), e = val("exclusive");
   const total = v + c + e, cap = st.cap, slots = Math.max(cap, Math.ceil(total - 1e-9));
   const floor = E.nightFloor(m.today, st);
@@ -196,7 +220,7 @@ function renderFreezer(m) {
   for (let i = 0; i < slots; i++) lids += cells[i] ? lidSVG(cells[i].k, cells[i].f, i >= cap) : lidSVG(null);
   let segs = "";
   for (let i = 0; i < cap; i++) { const f = Math.max(0, Math.min(1, total - i)); segs += `<span class="seg"><i style="width:${Math.round(f * 100)}%"></i></span>`; }
-  const state = total > cap ? `<span class="pill now">Over by ${fmtQ(total - cap)}</span>` : total < floor ? `<span class="pill soon">Below ${floor}</span>` : `<span class="pill ok">Room for ${fmtQ(cap - total)}</span>`;
+  const state = total > cap ? `<span class="pill now">Over by ${fmtQ(total - cap)}</span>` : total < floor ? `<span class="pill soon">Below ${fmtQ(floor)}</span>` : `<span class="pill ok">Room for ${fmtQ(cap - total)}</span>`;
   const tally = (k, kind) => {
     const s = m.stock && m.stock[k], cnt = lc[k];
     let sub = "Not counted";
@@ -206,15 +230,24 @@ function renderFreezer(m) {
       if (s.used > 0.05) bits.push(`${fmtQ(s.used)} sold since`);
       sub = bits.join(", ");
     } else if (cnt) sub = `Counted ${when(cnt.at)}`;
-    return `<div class="tally"><span class="name"><span class="swatch" style="background:${LID[kind][0]};border-color:${LID[kind][1]}"></span>${esc(nameOf(k, st))}</span><span class="n">${fmtQ(val(k))}<small>tubs</small></span><span class="sub">${sub}</span></div>`;
+    let extra = "";
+    if (k === "exclusive") {
+      const counted = !!(s || cnt);
+      if (!counted) sub = "Not counted yet";
+      else if (val(k) <= 0.05) sub = "Out. Restock it when you're ready, then set the new flavor here.";
+      else if (m.exNights != null) sub += `. About ${m.exNights >= 28 ? "4+ weeks" : m.exNights + " night" + (m.exNights === 1 ? "" : "s")} left at a normal pace. Not reordered by the app.`;
+      extra = `<button class="btn quiet small" data-act="open-exclusive">${counted ? "Change" : "Enter its tubs"}</button>`;
+    }
+    return `<div class="tally"><span class="name"><span class="swatch" style="background:${LID[kind][0]};border-color:${LID[kind][1]}"></span>${esc(nameOf(k, st))}</span><span class="n">${fmtQ(val(k))}<small>tubs</small></span><span class="sub">${sub}</span>${extra}</div>`;
   };
-  const showE = exOn(st) || e > 0.01;
+  const showE = exOn(st);
   el.innerHTML = `
     <div class="section-head"><h2>Freezer</h2>${state}</div>
     <div class="freezer"><div class="freezer-well" role="img" aria-label="${fmtQ(total)} of ${cap} tubs: ${fmtQ(v)} vanilla, ${fmtQ(c)} chocolate${showE ? ", " + fmtQ(e) + " " + esc(nameOf("exclusive", st)) : ""}">${lids}</div></div>
     <div class="readout"><span class="big">${fmtQ(total)}<span>of ${cap} tubs</span></span></div>
-    <div class="meter" style="--cap:${cap}" aria-hidden="true"><span class="floormark" style="left:${(floor / cap) * 100}%">Floor ${floor} tonight</span>${segs}</div>
-    <div class="tallies">${tally("vanilla", "v")}${tally("chocolate", "c")}${showE ? tally("exclusive", "e") : ""}</div>`;
+    <div class="meter" style="--cap:${cap}" aria-hidden="true"><span class="floormark ${floor / cap > 0.7 ? "end" : floor / cap < 0.2 ? "start" : ""}" style="left:${Math.min(100, (floor / cap) * 100)}%">Floor ${fmtQ(floor)} tonight</span>${segs}</div>
+    <div class="tallies">${tally("vanilla", "v")}${tally("chocolate", "c")}${showE ? tally("exclusive", "e") : ""}</div>
+    ${showE ? "" : `<div class="actions"><button class="btn quiet" data-act="open-exclusive">Add an exclusive flavor</button></div>`}`;
 }
 
 function lineHTML(key, qty, st, note) {
@@ -263,10 +296,10 @@ function renderGordon(m) {
   if (p.mode === "order") {
     const ice = Object.entries(p.order).filter(([, q]) => q > 0);
     const addons = (gplan.basket || []).filter(x => x.cover < 21);
-    const lines = Object.assign({}, p.order); addons.forEach(x => { lines[x.key] = x.packs; });
+    const lines = Object.fromEntries(Object.entries(p.order).filter(([, q]) => q > 0)); addons.forEach(x => { lines[x.key] = x.packs; });
     const total = Object.entries(lines).reduce((s, [k, q]) => s + q * priceOf(k, st), 0);
     const fee = total < st.gordon.minimum;
-    S.lastGordon = { lines, arriveOn: p.arriveOn, window: p.windows[p.windows.length - 1].label };
+    S.lastGordon = { lines, arriveOn: p.arriveOn, window: (p.windows[0] || st.gordon.windows[st.gordon.windows.length - 1]).label };
     const day = dayWord(p.arriveOn, m.cal);
     el.innerHTML = `${due}<div class="panel act">
       <div class="section-head"><h2>${p.arriveOn === m.cal ? "Order from Gordon's this morning" : "Order from Gordon's tomorrow morning"}</h2><span class="when-chip">Arrives ${day}</span></div>
@@ -284,7 +317,7 @@ function renderGordon(m) {
     el.innerHTML = `${due}<div class="panel">
       <div class="section-head"><h2>Gordon's order is in</h2><span class="pill ok">Arrives ${dayWord(p.arriveOn, m.cal)}</span></div>
       <div class="lines">${items}</div>
-      ${p.trim ? `<div class="flag now"><strong>Cut ${p.trim.over} ${esc(nameOf(p.trim.flavor, st).toLowerCase())} from this order.</strong><span>Tonight was slower than planned. As ordered, the freezer would hit about ${fmtQ(p.atArrival)} tubs. Change it in Gordon Ordering, then update it here.</span><div class="actions"><button class="btn primary" data-act="edit-order" data-id="${esc(id)}">Update the order</button></div></div>` : `<p class="note">The freezer should hold about ${fmtQ(p.atArrival)} of ${st.cap} tubs after it arrives.</p>`}
+      ${p.trim ? `<div class="flag now"><strong>Cut ${p.trim.over} ${esc(nameOf(p.trim.flavor, st).toLowerCase())} from this order.</strong><span>As ordered, the freezer would hit about ${fmtQ(p.atArrival)} tubs, over the ${st.cap} limit. Change it in Gordon Ordering, then update it here.</span><div class="actions"><button class="btn primary" data-act="edit-order" data-id="${esc(id)}">Update the order</button></div></div>` : `<p class="note">The freezer should hold about ${fmtQ(p.atArrival)} of ${st.cap} tubs after it arrives.</p>`}
       ${urgent}${S.confirmCancel === id ? cancelBox(os[0]) : `<div class="actions"><button class="btn ${p.arriveOn <= m.cal ? "primary" : ""}" data-act="arrived" data-id="${esc(id)}">It arrived</button><button class="btn" data-act="edit-order" data-id="${esc(id)}">Change quantities</button><button class="btn" data-act="cancel-order" data-id="${esc(id)}">Cancel order</button></div>`}</div>`;
   } else {
     const next = (m.week || []).find((n, k) => k > 0 && n.ordered);
@@ -292,6 +325,7 @@ function renderGordon(m) {
     const fl = p.floorA0 ? `${fmtQ(p.floorA0.vanilla)} vanilla and ${fmtQ(p.floorA0.chocolate)} chocolate` : "";
     el.innerHTML = `${due}<div class="panel">
       <div class="section-head"><h2>No Gordon's order ${p.arriveOn === m.cal ? "today" : "needed tomorrow"}</h2><span class="pill ok">Stocked</span></div>
+      ${gplan.orderToday ? `<div class="flag now"><strong>${gplan.due.map(k => nameOf(k, st)).join(" and ")} ${gplan.due.length > 1 ? "are" : "is"} almost out.</strong><span>${(n => n <= 0 ? "It won't last tonight." : `About ${n} night${n === 1 ? "" : "s"} left.`)(Math.min(...m.sup.rows.filter(r => gplan.due.includes(r.key)).map(r => r.cover)))} Nothing else from Gordon's is due, so either order ${gplan.basket.filter(x => gplan.due.includes(x.key)).map(x => lineLabel(x.key, x.packs, st)).join(" and ")} from Gordon's now (under ${money(st.gordon.minimum)} adds the ${money(st.gordon.fee)} fee) or pick some up and add it as a delivery.</span><div class="actions"><button class="btn primary" data-act="place-gordon-addons">Order from Gordon's</button><button class="btn" data-act="bought-any" data-key="${esc(gplan.due[0])}" data-qty="1" data-src="other">I picked some up</button></div></div>` : ""}
       <p>${p.mode === "full" ? `There's no room to add tubs without going over ${st.cap}.` : p.smallSkipped ? `Only a small top-up would fit, which would cost the ${money(st.gordon.fee)} fee. You stay close to the floor, so it waits for the next order.` : `Even a busy ${E.DOW_LONG[E.weekday(p.arriveOn)]} night leaves you above the floor of ${fl}.`} ${nextTxt}</p>${urgent}
       <div class="actions"><button class="btn" data-act="log-gordon">Log an order you placed</button></div></div>`;
   }
@@ -302,7 +336,7 @@ function renderSams(m) {
   const due = (m.pendingSams || []).map(o => placedCard(o, m)).join(""), plan = m.sup.plans.sams;
   const anyPlan = m.sup.plans.any || { basket: [], due: [], orderToday: false };
   S.lastSams = null;
-  const left = x => x.filler ? "added to reach the delivery minimum" : `about ${x.cover} night${x.cover === 1 ? "" : "s"} left`;
+  const left = x => x.filler ? "added to reach the delivery minimum" : x.cover <= 0 ? "won't last tonight" : `about ${x.cover} night${x.cover === 1 ? "" : "s"} left`;
   const coverOf = keys => Math.min(...m.sup.rows.filter(r => keys.includes(r.key)).map(r => r.cover));
   const byWhen = cover => { const d = E.addDays(m.today, cover); return cover <= 0 ? "right away" : `before ${d === E.addDays(m.today, 1) ? "tomorrow night" : E.DOW_LONG[E.weekday(d)] + " night"}`; };
   // Items bought at any store (Cookie Crisp) ride along with a Sam's order. If one runs low
@@ -320,7 +354,7 @@ function renderSams(m) {
   const needDay = plan.orderToday ? m.today : plan.needBy;
   const dueKeys = plan.due.concat(anyAlone ? [] : anyPlan.due);
   // When something is due, say which night it would run out, so the deadline is clear at any hour.
-  const head = !plan.orderToday ? `Next Sam's Club order ${needDay ? E.DOW_LONG[E.weekday(needDay)] : "this week"}` : `Order from Sam's Club ${byWhen(coverOf(dueKeys))}`.replace("Club before", "Club, needed before");
+  const head = !plan.orderToday ? `Next Sam's Club order ${needDay ? (needDay === m.today ? "today" : needDay === E.addDays(m.today, 1) ? "tomorrow" : (needDay >= E.addDays(m.today, 7) ? "next " : "") + E.DOW_LONG[E.weekday(needDay)]) : "in a few weeks"}` : `Order from Sam's Club ${byWhen(coverOf(dueKeys))}`.replace("Club before", "Club, needed before");
   S.lastSams = { lines };
   el.innerHTML = `${due}${anyHTML}<div class="panel ${plan.orderToday ? "act" : ""}">
     <div class="section-head"><h2>${head}</h2><span class="${plan.orderToday ? "when-chip" : "pill soon"}">${plan.orderToday ? "Order now" : "Planned"}</span></div>
@@ -388,14 +422,16 @@ function renderWeek(m) {
   }).join("");
   el.innerHTML = `<div class="section-head"><h2>Next 7 nights</h2><span class="small muted">Tubs in the freezer when each night opens</span></div>
     <div class="week"><div class="plot">${bars}<span class="hline cap" style="bottom:${pct(st.cap)}%"><span>Most ${st.cap}</span></span></div><div class="days">${days}</div></div>
-    <p class="note">The dark tick is where an average night leaves you. The purple tick is that night's floor (${st.floors.sunWed} Sunday to Wednesday, ${st.floors.thuSat} Thursday to Saturday). Later deliveries assume each morning's suggested Gordon's order gets placed.</p>`;
+    <p class="note">The dark tick is where an average night leaves you. The purple tick is that night's floor (${fmtQ(st.floors.sunWed)} Sunday to Wednesday, ${fmtQ(st.floors.thuSat)} Thursday to Saturday). Later deliveries assume each morning's suggested Gordon's order gets placed.</p>`;
 }
 function renderActivity(m) {
   const el = $("activity"), ev = [], byAt = {};
   for (const c of S.data.counts) (byAt[c.at] ||= []).push(c);
-  for (const at in byAt) ev.push({ at, t: "Counted " + byAt[at].map(c => `${nameOf(c.item, m.st).toLowerCase()} ${c.item === "brownies" || E.BY_KEY[c.item].step === 1 ? Math.round(c.value) : fmtQ(c.value)}`).join(", ") });
+  const cname = c => c.item === "exclusive" ? (c.name || "exclusive") : nameOf(c.item, m.st).toLowerCase();
+  for (const at in byAt) ev.push({ at, t: "Counted " + byAt[at].filter(c => E.BY_KEY[c.item]).map(c => `${cname(c)} ${c.item === "brownies" || E.BY_KEY[c.item].step === 1 ? Math.round(c.value) : fmtQ(c.value)}`).join(", ") });
   for (const d of S.data.deliveries) ev.push({ at: d.at, t: `Received ${E.BY_KEY[d.item] && E.BY_KEY[d.item].step === 1 ? d.qty : fmtQ(d.qty)} ${nameOf(d.item, m.st).toLowerCase()}${SUP[d.source] ? " from " + SUP[d.source] : ""}` });
-  for (const o of S.data.orders) ev.push({ at: o.placedAt, t: `Ordered from ${SUP[o.supplier]} for ${dayWord(o.arrivesOn, m.cal)}: ${Object.entries(o.lines || {}).filter(([, q]) => q > 0).map(([k, q]) => q + " " + nameOf(k, m.st).toLowerCase()).join(", ")}${o.status === "cancelled" ? (o.reason === "not_coming" ? " (didn't come)" : " (cancelled)") : o.status === "arrived" ? " (arrived)" : ""}` });
+  const packWord = (k, q) => E.BY_KEY[k].group === "ice" ? `${q} ${nameOf(k, m.st).toLowerCase()}` : `${nameOf(k, m.st).toLowerCase()} ×${q}`;
+  for (const o of S.data.orders) if (o.reason !== "undo") ev.push({ at: o.placedAt, t: `Ordered from ${SUP[o.supplier]} for ${dayWord(o.arrivesOn, m.cal)}: ${Object.entries(o.lines || {}).filter(([, q]) => q > 0).map(([k, q]) => packWord(k, q)).join(", ")}${o.status === "cancelled" ? (o.reason === "not_coming" ? " (didn't come)" : " (cancelled)") : o.status === "arrived" ? " (arrived)" : ""}` });
   for (const n of (m.st.learnLog || []).slice(-6)) ev.push({ at: n.at, t: n.note });
   ev.sort((a, b) => (a.at < b.at ? 1 : -1));
   el.innerHTML = `<div class="section-head"><h2>Activity</h2></div>${ev.length ? `<div class="log">${ev.slice(0, 12).map(e => `<div><time>${esc(when(e.at))}</time><span>${esc(e.t)}</span></div>`).join("")}</div>` : `<div class="empty">Counts, orders and deliveries will show up here.</div>`}`;
@@ -420,7 +456,7 @@ function renderSheet() {
     const brownies = `<div class="crow ${d.touched.brownies ? "touched" : ""}"><div><div class="cname">Brownies</div><div class="csub">${Math.round(d.vals.bLd * 48 + d.vals.bLoose)} servings. Little Debbie box = 48, small brownie = 1</div></div><span></span></div>
       <div class="crow"><div class="csub">Little Debbie boxes</div>${stepper("bLd", fmtQ(d.vals.bLd))}</div>
       <div class="crow"><div class="csub">Loose small brownies</div>${stepper("bLoose", String(Math.round(d.vals.bLoose)))}</div>`;
-    const ice = ["vanilla", "chocolate"].concat(exOn(st) || (d.est.exclusive || 0) > 0 ? ["exclusive"] : []);
+    const ice = ["vanilla", "chocolate"].concat(exOn(st) ? ["exclusive"] : []);
     body = `<p class="note" style="margin-top:10px">Tap + or − in quarters. Only rows you change get saved (green dot), and each becomes the new starting point. If a number is already right, tap + then − to confirm it.</p>
       <div class="grp">Ice cream, in tubs</div>${ice.map(row).join("")}
       <div class="grp">Mix-ins</div>${E.CATALOG.filter(c => c.group === "mix").map(c => c.key === "brownies" ? brownies : row(c.key)).join("")}
@@ -431,7 +467,7 @@ function renderSheet() {
     title = d.edit ? "Change the order" : `Confirm your ${SUP[d.supplier]} order`;
     const cal = calToday();
     body = `<p class="note" style="margin-top:10px">${d.edit ? "Change what's coming." : `Set what you actually ordered from ${SUP[d.supplier]}. Nothing is saved until you tap Save order.`}</p>` + Object.keys(d.lines).map(k => `<div class="crow"><div><div class="cname">${esc(nameOf(k, st))}</div><div class="csub">${E.BY_KEY[k].group === "ice" ? "tubs" : esc(E.BY_KEY[k].buy || "")}</div></div>${stepper("o-" + k, String(d.lines[k]))}</div>`).join("") +
-      `<div class="field"><span class="cname">Arrives</span><select id="arrivesSel"><option value="${cal}" ${d.arrivesOn === cal ? "selected" : ""}>Today</option><option value="${E.addDays(cal, 1)}" ${d.arrivesOn === E.addDays(cal, 1) ? "selected" : ""}>Tomorrow</option></select></div>` +
+      `<div class="field"><span class="cname">Arrives</span><select id="arrivesSel">${d.arrivesOn && d.arrivesOn < cal ? `<option value="${d.arrivesOn}" selected>Was due ${E.DOW_LONG[E.weekday(d.arrivesOn)]}</option>` : ""}<option value="${cal}" ${d.arrivesOn === cal ? "selected" : ""}>Today</option><option value="${E.addDays(cal, 1)}" ${d.arrivesOn === E.addDays(cal, 1) ? "selected" : ""}>Tomorrow</option></select></div>` +
       (d.supplier === "gordon" ? `<div class="field"><span class="cname">Window</span><select id="windowSel">${st.gordon.windows.map(w => `<option ${d.window === w.label ? "selected" : ""}>${esc(w.label)}</option>`).join("")}</select></div>` : "");
     foot = `<button class="btn" data-act="close">Go back</button><button class="btn primary" data-act="save-order">${d.edit ? "Save changes" : "Save order"}</button>`;
   } else if (sheet.kind === "arrive") {
@@ -442,9 +478,11 @@ function renderSheet() {
     title = "Add a delivery";
     const c = E.BY_KEY[d.item];
     body = `<p class="note" style="margin-top:10px">For anything you picked up or got delivered outside an order saved here.</p>
-      <div class="field"><span class="cname">Item</span><select id="delItem">${E.CATALOG.map(x => `<option value="${x.key}" ${d.item === x.key ? "selected" : ""}>${esc(nameOf(x.key, st))}</option>`).join("")}</select></div>
-      <div class="crow"><div><div class="cname">Amount</div><div class="csub">${esc(c.unit === "box" ? "boxes" : c.unit + "s")}${c.unitNote ? " of " + esc(c.unitNote) : ""}</div></div>${stepper("del", c.step === 1 ? String(d.qty) : fmtQ(d.qty))}</div>
-      <div class="field"><span class="cname">From</span><select id="delSrc"><option value="sams" ${c.supplier === "sams" ? "selected" : ""}>Sam's Club</option><option value="gordon" ${c.supplier === "gordon" ? "selected" : ""}>Gordon's</option><option value="other" ${c.supplier === "any" ? "selected" : ""}>Somewhere else</option></select></div>`;
+      <div class="field"><span class="cname">Item</span><select id="delItem">${E.CATALOG.filter(x => x.key !== "exclusive" || exOn(st)).map(x => `<option value="${x.key}" ${d.item === x.key ? "selected" : ""}>${esc(nameOf(x.key, st))}</option>`).join("")}</select></div>
+      ${c.pack > 1 ? `<div class="crow"><div><div class="cname">Full packs</div><div class="csub">${esc(c.buy || "")}</div></div>${stepper("delpk", String(Math.floor(d.qty / c.pack)))}</div>
+      <div class="crow"><div><div class="cname">Single ${esc(c.unit)}s</div><div class="csub">${d.qty} ${esc(c.unit)}s in all</div></div>${stepper("del", String(d.qty % c.pack))}</div>`
+      : `<div class="crow"><div><div class="cname">Amount</div><div class="csub">${esc(c.unit === "box" ? "boxes" : c.unit + "s")}${c.unitNote ? " of " + esc(c.unitNote) : ""}</div></div>${stepper("del", c.step === 1 ? String(d.qty) : fmtQ(d.qty))}</div>`}
+      <div class="field"><span class="cname">From</span>${(() => { const src = d.src || (c.supplier === "any" ? "other" : c.supplier); return `<select id="delSrc"><option value="sams" ${src === "sams" ? "selected" : ""}>Sam's Club</option><option value="gordon" ${src === "gordon" ? "selected" : ""}>Gordon's</option><option value="other" ${src === "other" ? "selected" : ""}>Somewhere else</option></select>`; })()}</div>`;
     foot = `<button class="btn" data-act="close">Cancel</button><button class="btn primary" data-act="save-delivery" ${d.qty > 0 ? "" : "disabled"}>Add to stock</button>`;
   } else if (sheet.kind === "settings") {
     title = "Settings";
@@ -462,9 +500,9 @@ function renderSheet() {
       ${num("s-smin", "Free delivery from", d.supplies.samsMinimum, 1, "Dollars. Orders get filled to this with the next items due")}
       ${num("s-cover", "Stock each order for", d.supplies.coverTo, 1, "Nights")}
       <div class="grp">Exclusive flavor</div>
-      <div class="field"><label class="toggle" for="s-exon"><input type="checkbox" id="s-exon" ${d.exclusive.active ? "checked" : ""}>Carry an Exclusive flavor</label><span></span></div>
-      <div class="field"><span class="cname">Flavor</span><select id="s-exname">${E.EXCLUSIVE_OPTIONS.map(o => `<option value="${esc(o.name)}" ${d.exclusive.name === o.name ? "selected" : ""}>${esc(o.name)}</option>`).join("")}</select></div>
-      ${num("s-ext", "Tubs to keep", d.exclusive.target, 1)}
+      <p class="note">Tracked from sales and never reordered by the app. Set its tubs from the freezer or with Count.</p>
+      <div class="field"><label class="toggle" for="s-exon"><input type="checkbox" id="s-exon" ${d.exclusive.active ? "checked" : ""}>We have an exclusive flavor now</label><span></span></div>
+      <div class="field"><label class="cname" for="s-exname">Flavor</label><input type="text" id="s-exname" maxlength="40" autocomplete="off" placeholder="Name of the flavor" value="${esc(d.exclusive.name || "")}"></div>
       <div class="grp">Servings per tub</div>
       ${num("s-yv", "Vanilla", d.yields.vanilla, 0.1, "Adjusts itself from your counts")}
       ${num("s-yc", "Chocolate", d.yields.chocolate, 0.1)}
@@ -475,6 +513,13 @@ function renderSheet() {
       ${(d.closedDates || []).slice().sort().map(ds => `<div class="field"><span class="tnum">${esc(new Date(ds + "T12:00:00Z").toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" }))}</span><button class="btn quiet" data-act="rm-closed" data-ds="${esc(ds)}">Remove</button></div>`).join("") || `<p class="note">None added yet.</p>`}
       ${Store.kind === "web" ? `<div class="grp">This phone</div><div class="field"><span class="csub">Forget the passcode on this device</span><button class="btn" type="button" data-act="signout">Sign out</button></div>` : ""}`;
     foot = `<button class="btn" data-act="close">Cancel</button><button class="btn primary" data-act="save-settings">Save settings</button>`;
+  } else if (sheet.kind === "exclusive") {
+    title = "Exclusive flavor";
+    body = `<p class="note" style="margin-top:10px">The app tracks it from Square sales like vanilla and chocolate, and counts its tubs in the freezer. It never suggests reordering it.</p>
+      <div class="field"><label class="cname" for="ex-name">Flavor</label><input type="text" id="ex-name" maxlength="40" autocomplete="off" placeholder="Name of the flavor" value="${esc(d.name)}"></div>
+      <div class="crow"><div><div class="cname">Tubs right now</div><div class="csub">In quarters</div></div>${stepper("ex", fmtQ(d.tubs))}</div>
+      ${d.active ? `<div class="field"><span class="csub">Finished it and not starting a new one yet?</span><button class="btn" type="button" data-act="end-exclusive">No exclusive now</button></div>` : ""}`;
+    foot = `<button class="btn" data-act="close">Cancel</button><button class="btn primary" data-act="save-exclusive">Save</button>`;
   } else if (sheet.kind === "copy") {
     title = "Copy this";
     body = `<textarea id="copyBox" rows="8" style="width:100%;margin-top:12px;padding:10px;border-radius:10px;border:1px solid var(--rule-strong);background:var(--ground)">${esc(d.text)}</textarea>`;
@@ -485,7 +530,7 @@ function renderSheet() {
 }
 
 function openCount() {
-  const m = model(), lc = latestCounts(), vals = {}, est = {};
+  const m = model(), lc = latestCounts(countsFor(settings())), vals = {}, est = {};
   for (const c of E.CATALOG) {
     const s = m.stock && m.stock[c.key];
     const e = s ? Math.max(0, s.value) : (lc[c.key] ? lc[c.key].value : null);
@@ -493,9 +538,9 @@ function openCount() {
     vals[c.key] = e == null ? 0 : (c.step === 1 ? Math.round(e) : E.quarter(e));
   }
   const bEst = est.brownies, det = lc.brownies && lc.brownies.detail;
-  vals.bLd = bEst != null ? Math.floor(bEst / 48 * 4) / 4 : 0;
+  // Keep the last split between Little Debbie boxes and loose brownies (use up boxes last)
+  vals.bLd = bEst == null ? 0 : det ? Math.min(det.ld, Math.floor(bEst / 48 * 4) / 4) : Math.floor(bEst / 48 * 4) / 4;
   vals.bLoose = bEst != null ? Math.max(0, Math.round(bEst - vals.bLd * 48)) : 0;
-  if (det && bEst != null && Math.abs(bEst - (det.ld * 48 + det.loose)) < 0.5) { vals.bLd = det.ld; vals.bLoose = det.loose; }
   openSheet("count", { vals, est, touched: {} });
 }
 function dbMsg(e) {
@@ -516,6 +561,7 @@ async function saveCount() {
       const L = E.learn(k, m.stock && m.stock[k], value, st);
       if (L) { if (L.yields) Object.assign(learned.yields, L.yields); if (L.adjust) Object.assign(learned.adjust, L.adjust); if (L.note || L.flag) notes.push({ at, note: L.note || L.flag }); }
       const doc = { item: k, value, at };
+      if (k === "exclusive") doc.name = st.exclusive.name || "";
       if (k === "brownies") doc.detail = { ld: d.vals.bLd, loose: d.vals.bLoose };
       await Store.add("counts", doc);
     }
@@ -536,10 +582,40 @@ async function saveOrder() {
   const lines = {}; for (const k in d.lines) if (d.lines[k] > 0) lines[k] = d.lines[k];
   if (!Object.keys(lines).length && !d.edit) return toast("Add at least one item first.");
   try {
-    if (d.edit) { await Store.update("orders/" + d.id, { lines, arrivesOn, window: win || null }); closeSheet(); toast("Order changed"); return; }
+    if (d.edit) {
+      const o = S.data.orders.find(x => x.id === d.id); if (!o) { closeSheet(); return; }
+      const doc = Object.assign({}, o); delete doc.id;
+      if (!Object.keys(lines).length) Object.assign(doc, { status: "cancelled", cancelledAt: new Date().toISOString(), reason: "emptied" });
+      Object.assign(doc, { lines, arrivesOn, window: win || null });
+      await Store.set("orders/" + d.id, doc); closeSheet(); toast(doc.status === "cancelled" ? "Order cancelled" : "Order changed"); return;
+    }
     const id = await Store.add("orders", { supplier: d.supplier, lines, placedAt: new Date().toISOString(), arrivesOn, window: win || null, status: "placed" });
     closeSheet(); toast("Order saved", id ? { label: "Undo", act: "undo-order", id } : null);
   } catch (e) { toast(dbMsg(e)); }
+}
+function openExclusive() {
+  const st = settings(), m = model(), s = m.stock && m.stock.exclusive;
+  openSheet("exclusive", { active: exOn(st), name: exOn(st) ? (st.exclusive.name || "") : "", tubs: exOn(st) && s ? E.quarter(Math.max(0, s.value)) : 0 });
+  setTimeout(() => { const i = $("ex-name"); if (i && !i.value) i.focus(); }, 50);
+}
+async function saveExclusive() {
+  const d = sheet.data, name = ($("ex-name") ? $("ex-name").value : d.name).trim();
+  if (!name) { toast("Type the flavor's name first."); const i = $("ex-name"); if (i) i.focus(); return; }
+  const st = settings(), at = new Date().toISOString();
+  const startsNew = !exOn(st) || (st.exclusive.name || "").toLowerCase() !== name.toLowerCase();
+  const next = settings();
+  next.exclusive = { active: true, name, since: startsNew ? at : (st.exclusive.since || at) };
+  next.updatedAt = at;
+  try {
+    await Store.set("config/settings", next);
+    await Store.add("counts", { item: "exclusive", value: d.tubs, at, name });
+    closeSheet(); toast(startsNew ? `${name} added` : `${name} updated`);
+  } catch (e) { toast(dbMsg(e)); }
+}
+async function endExclusive() {
+  const next = settings();
+  next.exclusive = Object.assign({}, next.exclusive, { active: false }); next.updatedAt = new Date().toISOString();
+  try { await Store.set("config/settings", next); closeSheet(); toast("No exclusive flavor now"); } catch (e) { toast(dbMsg(e)); }
 }
 async function cancelOrder(id, reason) {
   try {
@@ -550,6 +626,7 @@ async function cancelOrder(id, reason) {
 }
 async function saveArrive() {
   const d = sheet.data, at = new Date().toISOString();
+  if (!Object.values(d.lines).some(q => q > 0)) return cancelOrder(d.id, "not_coming").then(closeSheet);
   try {
     // Order lines are in store packs (a box of 48 brownie servings, a 49.5 oz cereal box);
     // stock is kept in counting units, so convert before adding.
@@ -564,7 +641,8 @@ async function saveDelivery() {
   catch (e) { toast(dbMsg(e)); }
 }
 function draftSettings() {
-  const d = sheet.data, n = id => { const el = $(id); const v = el ? parseFloat(el.value) : NaN; return isNaN(v) ? null : v; }, keep = (v, o) => (v == null ? o : v);
+  // Blank, negative or nonsense entries keep the previous value instead of saving 0
+  const d = sheet.data, n = id => { const el = $(id); const v = el ? parseFloat(el.value) : NaN; return isNaN(v) || v < 0 || v > 100000 ? null : v; }, keep = (v, o) => (v == null ? o : v);
   const t = (id, o) => { const el = $(id); return el && /^\d\d:\d\d$/.test(el.value) ? el.value : o; };
   d.cap = keep(n("s-cap"), d.cap);
   d.floors.sunWed = keep(n("s-fsw"), d.floors.sunWed); d.floors.thuSat = keep(n("s-fts"), d.floors.thuSat);
@@ -573,19 +651,42 @@ function draftSettings() {
   d.supplies.samsMinimum = keep(n("s-smin"), d.supplies.samsMinimum); d.supplies.coverTo = keep(n("s-cover"), d.supplies.coverTo);
   if ($("s-exon")) d.exclusive.active = $("s-exon").checked;
   if ($("s-exname")) d.exclusive.name = $("s-exname").value;
-  d.exclusive.target = keep(n("s-ext"), d.exclusive.target);
   d.yields.vanilla = keep(n("s-yv"), d.yields.vanilla); d.yields.chocolate = keep(n("s-yc"), d.yields.chocolate); d.yields.exclusive = keep(n("s-ye"), d.yields.exclusive);
   d.closedDates = d.closedDates || [];
   return d;
 }
+// Checks the settings form; returns [message, field id] for the first problem, or null.
+function settingsProblem() {
+  const raw = id => { const el = $(id); return el ? el.value.trim() : ""; };
+  const num = id => raw(id) === "" ? NaN : Number(raw(id));
+  const cap = num("s-cap");
+  const checks = [
+    [!(Number.isInteger(cap) && cap >= 4 && cap <= 40), "Most tubs ever has to be a whole number from 4 to 40.", "s-cap"],
+    [!(num("s-fsw") >= 0 && num("s-fsw") <= cap), "The Sunday to Wednesday floor has to be between 0 and the most tubs.", "s-fsw"],
+    [!(num("s-fts") >= 0 && num("s-fts") <= cap), "The Thursday to Saturday floor has to be between 0 and the most tubs.", "s-fts"],
+    [!/^\d\d:\d\d$/.test(raw("s-c1")) || !/^\d\d:\d\d$/.test(raw("s-c2")) || raw("s-c1") >= raw("s-c2"), "The first Gordon's order-by time has to be earlier than the second.", "s-c1"],
+    [!(num("s-gmin") >= 0 && num("s-gmin") <= 1000), "Gordon's no-fee amount has to be between $0 and $1,000.", "s-gmin"],
+    [!(num("s-smin") >= 0 && num("s-smin") <= 1000), "Sam's free-delivery amount has to be between $0 and $1,000.", "s-smin"],
+    [!(num("s-cover") >= 5 && num("s-cover") <= 28), "Stock each order for has to be between 5 and 28 nights.", "s-cover"],
+    [!(num("s-yv") >= 5 && num("s-yv") <= 60), "Servings per vanilla tub has to be between 5 and 60.", "s-yv"],
+    [!(num("s-yc") >= 5 && num("s-yc") <= 60), "Servings per chocolate tub has to be between 5 and 60.", "s-yc"],
+    [!(num("s-ye") >= 5 && num("s-ye") <= 60), "Servings per exclusive tub has to be between 5 and 60.", "s-ye"],
+  ];
+  const bad = checks.find(c => c[0]);
+  return bad ? [bad[1], bad[2]] : null;
+}
 async function saveSettings() {
+  const problem = settingsProblem();
+  if (problem) { toast(problem[0]); const el = $(problem[1]); if (el) el.focus(); return; }
   const d = draftSettings(), next = settings();
-  next.cap = Math.max(1, Math.round(d.cap));
+  next.cap = d.cap >= 1 ? Math.round(d.cap) : next.cap;
   next.floors = { sunWed: Math.max(0, d.floors.sunWed), thuSat: Math.max(0, d.floors.thuSat) };
   next.gordon = { windows: d.gordon.windows, minimum: Math.max(0, d.gordon.minimum), fee: next.gordon.fee };
   next.supplies = { topUpBelow: next.supplies.topUpBelow, coverTo: Math.min(28, Math.max(5, Math.round(d.supplies.coverTo))), samsMinimum: Math.max(0, d.supplies.samsMinimum) };
-  const opt = E.EXCLUSIVE_OPTIONS.find(o => o.name === d.exclusive.name) || E.EXCLUSIVE_OPTIONS[0];
-  next.exclusive = { active: !!d.exclusive.active, name: opt.name, code: opt.code, price: opt.price, target: Math.max(1, Math.round(d.exclusive.target || 2)) };
+  const exName = (d.exclusive.name || "").trim();
+  if (d.exclusive.active && !exName) { toast("Type the exclusive flavor's name, or turn it off."); return; }
+  const startsNew = d.exclusive.active && (!exOn(next) || (next.exclusive.name || "").toLowerCase() !== exName.toLowerCase());
+  next.exclusive = { active: !!d.exclusive.active, name: exName, since: startsNew ? new Date().toISOString() : (next.exclusive.since || null) };
   for (const f of ["vanilla", "chocolate", "exclusive"]) if (d.yields[f] >= 5 && d.yields[f] <= 60) next.yields[f] = d.yields[f];
   next.closedDates = d.closedDates; next.updatedAt = new Date().toISOString();
   try { await Store.set("config/settings", next); closeSheet(); toast("Settings saved"); } catch (e) { toast(dbMsg(e)); }
@@ -605,8 +706,12 @@ document.addEventListener("click", e => {
     } else if (sheet.kind === "order" || sheet.kind === "arrive") {
       const k = id.slice(2); d.lines[k] = Math.max(0, d.lines[k] + dir);
       if (sheet.kind === "order") { if ($("arrivesSel")) d.arrivesOn = $("arrivesSel").value; if ($("windowSel")) d.window = $("windowSel").value; }
+    } else if (sheet.kind === "exclusive") {
+      d.name = $("ex-name") ? $("ex-name").value : d.name; d.tubs = Math.max(0, d.tubs + dir * 0.25);
     } else if (sheet.kind === "delivery") {
-      d.item = $("delItem").value; d.qty = Math.max(0, +(d.qty + dir * E.BY_KEY[d.item].step).toFixed(2));
+      d.item = $("delItem").value; d.src = $("delSrc").value;
+      const c = E.BY_KEY[d.item], by = id === "delpk" ? c.pack : c.step;
+      d.qty = Math.max(0, +(d.qty + dir * by).toFixed(2));
     }
     const body = document.querySelector(".sheet .body"), top = body ? body.scrollTop : 0;
     renderSheet(); const b2 = document.querySelector(".sheet .body"); if (b2) b2.scrollTop = top;
@@ -620,17 +725,19 @@ document.addEventListener("click", e => {
     case "refresh": syncSquare(true); break;
     case "open-count": openCount(); break;
     case "open-delivery": openSheet("delivery", { item: "oreos", qty: 1 }); break;
-    case "bought-any": openSheet("delivery", { item: el.dataset.key, qty: +el.dataset.qty || 1 }); break;
+    case "bought-any": openSheet("delivery", { item: el.dataset.key, qty: +el.dataset.qty || 1, src: el.dataset.src || null }); break;
     case "open-settings": openSheet("settings", JSON.parse(JSON.stringify(settings()))); break;
     case "place-gordon": if (S.lastGordon) openSheet("order", { supplier: "gordon", lines: Object.assign({}, S.lastGordon.lines), arrivesOn: S.lastGordon.arriveOn, window: S.lastGordon.window }); break;
     case "place-sams": if (S.lastSams) openSheet("order", { supplier: "sams", lines: Object.assign({}, S.lastSams.lines), arrivesOn: defaultArrival("sams") }); break;
+    case "place-gordon-addons": { const g = model().sup.plans.gordon; const lines = Object.fromEntries(g.basket.map(x => [x.key, x.packs])); const st = settings(), ns = nowStamp(), late = st.gordon.windows[st.gordon.windows.length - 1];
+      openSheet("order", { supplier: "gordon", lines, arrivesOn: ns.slice(11, 16) < late.cutoff ? ns.slice(0, 10) : E.addDays(ns.slice(0, 10), 1), window: late.label }); break; }
     case "copy-gordon": if (S.lastGordon) copyText(orderText(S.lastGordon.lines, settings(), "gordon", `deliver ${dayWord(S.lastGordon.arriveOn, calToday())} ${S.lastGordon.window}`)); break;
     case "log-gordon": { const st = settings(), ns = nowStamp(), late = st.gordon.windows[st.gordon.windows.length - 1]; const lines = { vanilla: 0, chocolate: 0 }; if (exOn(st)) lines.exclusive = 0; lines.bananas = 0;
       openSheet("order", { supplier: "gordon", lines, arrivesOn: ns.slice(11, 16) < late.cutoff ? ns.slice(0, 10) : E.addDays(ns.slice(0, 10), 1), window: late.label }); break; }
     case "log-sams": { const lines = {}; E.CATALOG.filter(c => c.supplier === "sams" || c.supplier === "any").forEach(c => { lines[c.key] = 0; }); openSheet("order", { supplier: "sams", lines, arrivesOn: defaultArrival("sams") }); break; }
     case "copy-sams": if (S.lastSams) copyText(orderText(S.lastSams.lines, settings(), "sams")); break;
-    case "edit-order": { const o = S.data.orders.find(x => x.id === el.dataset.id); if (o) openSheet("order", { edit: true, id: o.id, supplier: o.supplier, lines: Object.assign({}, o.lines), arrivesOn: o.arrivesOn, window: o.window }); break; }
-    case "arrived": { const o = S.data.orders.find(x => x.id === el.dataset.id); if (o) openSheet("arrive", { id: o.id, supplier: o.supplier, lines: Object.assign({}, o.lines) }); break; }
+    case "edit-order": { const o = S.data.orders.find(x => x.id === el.dataset.id); if (o) openSheet("order", { edit: true, id: o.id, supplier: o.supplier, lines: Object.fromEntries(Object.entries(o.lines || {}).filter(([, q]) => q > 0)), arrivesOn: o.arrivesOn, window: o.window }); break; }
+    case "arrived": { const o = S.data.orders.find(x => x.id === el.dataset.id); if (o) openSheet("arrive", { id: o.id, supplier: o.supplier, lines: Object.fromEntries(Object.entries(o.lines || {}).filter(([, q]) => q > 0)) }); break; }
     case "notcoming": guarded(() => cancelOrder(el.dataset.id, "not_coming")); break;
     case "cancel-order": S.confirmCancel = el.dataset.id; render(); break;
     case "keep-order": S.confirmCancel = null; render(); break;
@@ -643,11 +750,17 @@ document.addEventListener("click", e => {
     case "save-settings": guarded(saveSettings); break;
     case "add-closed": { const v = $("s-cdate").value; if (v) { draftSettings(); if (!sheet.data.closedDates.includes(v)) sheet.data.closedDates.push(v); renderSheet(); } break; }
     case "rm-closed": draftSettings(); sheet.data.closedDates = sheet.data.closedDates.filter(x => x !== el.dataset.ds); renderSheet(); break;
+    case "open-exclusive": openExclusive(); break;
+    case "save-exclusive": guarded(saveExclusive); break;
+    case "end-exclusive": guarded(endExclusive); break;
     case "signout": lockOut(); break;
     case "retry-boot": boot(); break;
   }
 });
-document.addEventListener("change", e => { if (sheet && sheet.kind === "delivery" && e.target.id === "delItem") { sheet.data.item = e.target.value; sheet.data.qty = 1; renderSheet(); } });
+document.addEventListener("change", e => {
+  if (sheet && sheet.kind === "delivery" && e.target.id === "delItem") { sheet.data.item = e.target.value; sheet.data.qty = 1; sheet.data.src = null; renderSheet(); }
+  if (sheet && sheet.kind === "delivery" && e.target.id === "delSrc") sheet.data.src = e.target.value;
+});
 document.addEventListener("keydown", e => { if (e.key === "Escape" && sheet) closeSheet(); });
 document.addEventListener("visibilitychange", () => { if (!document.hidden && S.booted && (!S.lastSync || Date.now() - S.lastSync > 5 * 60e3)) syncSquare(false); });
 

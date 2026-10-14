@@ -147,16 +147,34 @@ const Engine = (() => {
     return false;
   }
   function openDays(base, today, n) { return Object.keys(base).filter(d => d < today && base[d].any > 0).sort().slice(-n); }
-  // Ice cream tubs for one night: hi = busiest of the last 3 same weekdays, lo = 80% of the slowest
+  // Share of a night's scoops that go to the exclusive, from nights one was on offer
+  // (default 13%, the average across this fall's exclusives).
+  function exclusiveShare(base, today) {
+    let e = 0, t = 0;
+    for (const d of Object.keys(base)) if (d < today && d >= addDays(today, -70) && base[d].exclusive > 0) { e += base[d].exclusive; t += base[d].vanilla + base[d].chocolate + base[d].exclusive; }
+    return t >= 40 ? e / t : 0.13;
+  }
+  // Ice cream tubs for one night: hi = busiest of the last 3 same weekdays, lo = 80% of the slowest.
+  // The exclusive (only while one is running) is its usual share of the whole night.
   function forecastNight(ds, base, st, today) {
     const zero = { vanilla: 0, chocolate: 0, exclusive: 0 };
     if (isClosed(ds, base, st, today)) return { hi: zero, lo: zero, mean: zero, closed: true };
     const past = Object.keys(base).filter(d => d < today && weekday(d) === weekday(ds) && base[d].any > 0).sort().slice(-3);
     const hi = {}, lo = {}, mean = {};
-    for (const f of ICE) {
+    for (const f of ["vanilla", "chocolate"]) {
       const y = st.yields[f];
       if (past.length) { const t = past.map(d => base[d][f] / y); hi[f] = Math.max(...t); lo[f] = 0.8 * Math.min(...t); mean[f] = t.reduce((a, b) => a + b, 0) / t.length; }
       else { const r = openDays(base, today, 7); const m = r.length ? r.reduce((s, d) => s + base[d][f], 0) / r.length / y : 0; hi[f] = 1.5 * m; lo[f] = 0.5 * m; mean[f] = m; }
+    }
+    hi.exclusive = lo.exclusive = mean.exclusive = 0;
+    if (st.exclusive && st.exclusive.active) {
+      const share = exclusiveShare(base, today), y = st.yields.exclusive;
+      const nightScoops = d => base[d].vanilla + base[d].chocolate + base[d].exclusive;
+      const ref = past.length ? past.map(nightScoops) : openDays(base, today, 7).map(nightScoops);
+      if (ref.length) {
+        const avg = ref.reduce((a, b) => a + b, 0) / ref.length;
+        hi.exclusive = share * Math.max(...ref) / y; lo.exclusive = 0.8 * share * Math.min(...ref) / y; mean.exclusive = share * avg / y;
+      }
     }
     return { hi, lo, mean, closed: false };
   }
@@ -186,7 +204,8 @@ const Engine = (() => {
     const cal = nowStamp.slice(0, 10), hm = nowStamp.slice(11, 16), biz = stampBusinessDate(nowStamp);
     const late = st.gordon.windows[st.gordon.windows.length - 1];
     const A0 = hm < late.cutoff ? cal : addDays(cal, 1);
-    const exOn = !!(st.exclusive && st.exclusive.active), exT = exOn ? (st.exclusive.target || 2) : 0;
+    // The exclusive is never reordered here (the shop restocks it by hand once it runs out);
+    // its tubs only count against freezer room.
     const core = ["vanilla", "chocolate"], sh = shares(base, st, biz);
     const fc = d => forecastNight(d, base, st, biz);
     const sold = soldTonight || {};
@@ -219,12 +238,10 @@ const Engine = (() => {
     const endA0 = {}; for (const f of ICE) endA0[f] = run[f] + (nightsBefore.length ? 0 : 0) - fc(A0).hi[f];
     const flA0 = flavorFloors(nightFloor(A0, st), sh);
     const short = core.filter(f => endA0[f] < flA0[f]);
-    const exShort = exOn && endA0.exclusive < 0.5;
     res.endA0 = endA0; res.floorA0 = flA0;
-    if (!short.length && !exShort) { res.mode = "none"; return res; }
+    if (!short.length) { res.mode = "none"; return res; }
     const dname = DOW_LONG[weekday(A0)];
     short.forEach(f => res.reasons.push(`${BY_KEY[f].name} would end ${dname} night under ${fmtQ(flA0[f])} tubs`));
-    if (exShort) res.reasons.push(`The Exclusive would run out ${dname} night`);
 
     // Size: fill toward the cap so both flavors reach their floors together
     const horizon = [0, 1, 2, 3].map(k => addDays(A0, k));
@@ -232,15 +249,15 @@ const Engine = (() => {
     for (const d of horizon) { const fl = flavorFloors(nightFloor(d, st), sh); core.forEach(f => { flMax[f] = Math.max(flMax[f], fl[f]); }); }
     const rate = {}; core.forEach(f => { rate[f] = horizon.reduce((s, d) => s + fc(d).hi[f], 0) / horizon.length; });
     const room = Math.floor(st.cap - ICE.reduce((s, f) => s + arrive[f], 0) + 1e-9);
-    const usable = Math.max(0, st.cap - exT - flMax.vanilla - flMax.chocolate);
+    const usable = Math.max(0, st.cap - arrive.exclusive - flMax.vanilla - flMax.chocolate);
     const cover = usable / ((rate.vanilla + rate.chocolate) || 1);
-    const target = { vanilla: flMax.vanilla + rate.vanilla * cover, chocolate: flMax.chocolate + rate.chocolate * cover, exclusive: exT };
+    const target = { vanilla: flMax.vanilla + rate.vanilla * cover, chocolate: flMax.chocolate + rate.chocolate * cover, exclusive: 0 };
     const want = {}; for (const f of ICE) want[f] = Math.max(0, target[f] - arrive[f]);
-    const order = {}; for (const f of ICE) order[f] = exOn || f !== "exclusive" ? Math.floor(want[f] + 0.5) : 0;
+    const order = { vanilla: Math.floor(want.vanilla + 0.5), chocolate: Math.floor(want.chocolate + 0.5), exclusive: 0 };
     const sum = () => ICE.reduce((s, f) => s + order[f], 0);
-    while (sum() > Math.max(0, room)) { const f = ICE.filter(k => order[k] > 0).sort((a, b) => (order[b] - want[b]) - (order[a] - want[a]))[0]; order[f]--; }
+    while (sum() > Math.max(0, room)) { const f = core.filter(k => order[k] > 0).sort((a, b) => (order[b] - want[b]) - (order[a] - want[a]))[0]; order[f]--; }
     while (sum() < room) {
-      const g = ICE.filter(f => exOn || f !== "exclusive").map(f => [f, want[f] - order[f]]).sort((a, b) => b[1] - a[1]);
+      const g = core.map(f => [f, want[f] - order[f]]).sort((a, b) => b[1] - a[1]);
       if (!g.length || g[0][1] <= 0.25) break;
       order[g[0][0]]++;
     }
@@ -248,7 +265,7 @@ const Engine = (() => {
     // Small orders cost a delivery fee and a trip. Top up to the minimum if the
     // freezer has room; otherwise skip it when stock still clears 85% of the
     // floor on a busy night and the full floor on a normal one.
-    const value = () => ICE.reduce((s, f) => s + order[f] * (f === "exclusive" ? (+st.exclusive.price || 0) : BY_KEY[f].price), 0);
+    const value = () => core.reduce((s, f) => s + order[f] * BY_KEY[f].price, 0);
     while (value() < st.gordon.minimum && sum() < room) {
       const g = core.map(f => [f, want[f] - order[f]]).sort((a, b) => b[1] - a[1]); order[g[0][0]]++;
     }
@@ -354,6 +371,6 @@ const Engine = (() => {
   }
 
   return { TZ, CATALOG, BY_KEY, ICE, SUPPLIER, EXCLUSIVE_OPTIONS, DOW, DOW_LONG, usageOfRow, localStamp, businessDate, addDays, weekday, stampBusinessDate,
-    quarter, fmtQ, fmtUnits, dailyTables, usageSince, estimates, forecastNight, mixNight, nightFloor, shares, flavorFloors, planGordon, simulateWeek, planSupplies, learn, perUnit };
+    exclusiveShare, quarter, fmtQ, fmtUnits, dailyTables, usageSince, estimates, forecastNight, mixNight, nightFloor, shares, flavorFloors, planGordon, simulateWeek, planSupplies, learn, perUnit };
 })();
 if (typeof module !== "undefined") module.exports = Engine;
