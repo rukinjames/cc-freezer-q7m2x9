@@ -130,6 +130,11 @@ async function textAll(body: string, skipName?: string) {
   for (const p of people) if (p.name !== skipName) out.push({ name: p.name, ...(await sms(p.phone, body)) });
   return out;
 }
+// Failed texts go to the function logs (names only, never numbers) so they can be looked up.
+function logFails(kind: string, id: string, results: { name: string; ok: boolean; error?: string }[]) {
+  const bad = results.filter((r) => !r.ok);
+  console.log(JSON.stringify({ pickup: kind, order: id, sent: results.length - bad.length, failed: bad.map((r) => `${r.name}: ${r.error}`) }));
+}
 // Chicago wall-clock "YYYY-MM-DDTHH:MM"
 function chicagoNow() {
   const f = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
@@ -144,6 +149,9 @@ function dayWord(ds: string, today: string) {
 }
 function describe(o: Obj, today: string) {
   const when = dayWord(String(o.arrivesOn), today) + (o.window ? `, ${o.window}` : "");
+  const lines = isObj(o.lines) ? o.lines : {};
+  const tubs = (Number(lines.vanilla) || 0) + (Number(lines.chocolate) || 0);
+  if (o.supplier === "gordon" && tubs > 0) return `Gordon's ice cream order (${tubs} tub${tubs === 1 ? "" : "s"}) arriving ${when}`;
   return `${SUP[String(o.supplier)] ?? "The"} order arriving ${when}`;
 }
 async function getOrder(id: string) {
@@ -163,17 +171,20 @@ async function tick() {
       if (String(o.arrivesOn) < today) continue; // stale order, its card asks whether it arrived
       if (!p.alertedAt && String(p.sendAfter ?? "") <= nowIso) {
         const { data: won } = await sb.rpc("inventory_pickup_mark", { p_id: row.id, p_key: "alertedAt" });
-        if (won) { await textAll(`Campus Creamery: ${describe(o, today)}. Who can pick it up? Tap to claim it: ${link}`); sent.push(`alert ${row.id}`); }
+        if (won) { logFails("alert", row.id, await textAll(`Campus Creamery: ${describe(o, today)}. Who can pick it up? Tap to claim it: ${link}`)); sent.push(`alert ${row.id}`); }
       } else if (p.alertedAt && !p.by && !p.remindedAt) {
         const start = `${o.arrivesOn}T${/^\d\d:\d\d$/.test(String(o.windowStart ?? "")) ? o.windowStart : "10:00"}`;
-        if (now >= addMinutes(start, -60)) {
+        // An hour before the window, but never sooner than 30 minutes after the first text,
+        // so an order placed close to its window doesn't get two texts back to back.
+        const settled = Date.now() - new Date(String(p.alertedAt)).getTime() >= 30 * 60000;
+        if (now >= addMinutes(start, -60) && settled) {
           const { data: won } = await sb.rpc("inventory_pickup_mark", { p_id: row.id, p_key: "remindedAt" });
-          if (won) { await textAll(`Campus Creamery: Nobody has claimed the ${describe(o, today)} yet. Can you pick it up? ${link}`); sent.push(`reminder ${row.id}`); }
+          if (won) { logFails("reminder", row.id, await textAll(`Campus Creamery: Nobody has claimed the ${describe(o, today)} yet. Can you pick it up? ${link}`)); sent.push(`reminder ${row.id}`); }
         }
       }
     } else if (o.status === "cancelled" && p.alertedAt && !p.cancelNotifiedAt) {
       const { data: won } = await sb.rpc("inventory_pickup_mark", { p_id: row.id, p_key: "cancelNotifiedAt" });
-      if (won) { await textAll(`Campus Creamery: The ${describe(o, today)} was cancelled. No pickup needed.`); sent.push(`cancel ${row.id}`); }
+      if (won) { logFails("cancel", row.id, await textAll(`Campus Creamery: The ${describe(o, today)} was cancelled. No pickup needed.`)); sent.push(`cancel ${row.id}`); }
     }
   }
   return sent;
