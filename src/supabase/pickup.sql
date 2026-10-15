@@ -1,0 +1,4 @@
+-- Applied as migrations "pickup_claims" and "pickup_text_schedule".
+-- inventory_private (cron key), inventory_claim / inventory_unclaim / inventory_pickup_mark,
+-- and a pg_cron job that POSTs {"op":"tick"} to the inventory function every minute
+-- with the x-cron-key header read from inventory_private.

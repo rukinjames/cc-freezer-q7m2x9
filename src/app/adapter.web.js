@@ -70,6 +70,10 @@ const Store = (() => {
     async sales(request) { const j = await call("sales", { query: request.query }); return { rows: j.data || [], at: Date.now() }; },
     async add(col, data) { const j = await call("add", { collection: col, data }); await refresh(); return j && j.id; },
     async set(path, data) { const [c, id] = path.split("/"); await call("set", { collection: c, id, data }); await refresh(); },
-    async update(path, data) { const [c, id] = path.split("/"); await call("update", { collection: c, id, data }); await refresh(); },
+    async update(path, data, opts) { const [c, id] = path.split("/"); await call("update", Object.assign({ collection: c, id, data }, opts && opts.replace ? { replace: opts.replace } : {})); await refresh(); },
+    // Pickup texts: the server texts everyone; the first claim wins.
+    async claim(id, name) { const j = await call("claim", { id, name }); await refresh(); return j.by || null; },
+    async unclaim(id, name) { const j = await call("unclaim", { id, name }); await refresh(); return !!j.ok; },
+    async testTexts() { const j = await call("test_sms", {}); return j.results || []; },
   };
 })();

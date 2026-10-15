@@ -32,7 +32,10 @@ class Srv:
         if op == "update":
             d = self.get(b["collection"], b["id"])
             if not d: return await route.fulfill(status=404, json={"error": "not_found"}, headers=H)
-            d["data"] = merge(d["data"], b["data"]); return await route.fulfill(json={"id": b["id"]}, headers=H)
+            d["data"] = merge(d["data"], b["data"])
+            for k in b.get("replace") or []:   # same as the server: listed keys overwrite
+                if k in b["data"]: d["data"][k] = b["data"][k]
+            return await route.fulfill(json={"id": b["id"]}, headers=H)
         return await route.fulfill(status=400, json={"error": "bad_request"}, headers=H)
 res = []
 def check(name, ok, info=""):
