@@ -12,9 +12,9 @@ const Engine = (() => {
     { key: "chocolate", name: "Chocolate", group: "ice", unit: "tub", supplier: "gordon", code: "442683", pack: 1, price: 31.79, step: 0.25 },
     { key: "exclusive", name: "Exclusive", group: "ice", unit: "tub", supplier: "gordon", code: "", pack: 1, price: 0, step: 0.25 },
     { key: "oreos", name: "Oreos", group: "mix", shelf: "cookies", color: "#2f2a3a", unit: "box", unitNote: "156 cookies", perUnit: 156, supplier: "sams", buy: "OREO 12-pack, 156 cookies", pack: 1, price: 10.98, step: 0.25 },
-    { key: "brownies", name: "Brownies", group: "mix", shelf: "cookies", color: "#5b3a2a", unit: "serving", perUnit: 1, supplier: "sams", buy: "Little Debbie Cosmic Brownies, 24 ct (48 servings)", pack: 48, price: 10.48, step: 1 },
+    { key: "brownies", name: "Brownies", group: "mix", shelf: "cookies", color: "#5b3a2a", unit: "serving", perUnit: 1, supplier: "sams", buy: "Little Debbie Cosmic Brownies, 24 ct (48 servings)", pack: 48, price: 10.78, step: 1 },
     { key: "strawberries", name: "Strawberries", group: "mix", shelf: "fruit", color: "#d2475a", unit: "bag", unitNote: "4 lb", perUnit: 51, supplier: "sams", buy: "Member's Mark Sliced Strawberries, 4 lb", pack: 1, price: 7.98, step: 0.25 },
-    { key: "blueberries", name: "Blueberries", group: "mix", shelf: "fruit", color: "#4a5fb8", unit: "bag", unitNote: "4 lb", perUnit: 71, supplier: "sams", buy: "Member's Mark Blueberries, 64 oz", pack: 1, price: 9.17, step: 0.25 },
+    { key: "blueberries", name: "Blueberries", group: "mix", shelf: "fruit", color: "#4a5fb8", unit: "bag", unitNote: "4 lb", perUnit: 71, supplier: "sams", buy: "Member's Mark Blueberries, 64 oz", pack: 1, price: 9.77, step: 0.25 },
     { key: "bananas", name: "Bananas", group: "mix", shelf: "fruit", color: "#e2c14a", unit: "bag", unitNote: "5 lb", perUnit: 64, supplier: "gordon", code: "600645", buy: "Sliced frozen bananas, 5 lb", pack: 1, price: 13.56, step: 0.25 },
     { key: "ctc", name: "Cinnamon Toast Crunch", group: "mix", shelf: "cereal", color: "#c98a3e", unit: "box", unitNote: "about 19 oz, a 49.5 oz Sam's box counts as 2½", perUnit: 42, supplier: "sams", buy: "Cinnamon Toast Crunch, 49.5 oz", pack: 2.6, price: 7.98, step: 0.25 },
     { key: "fruitypebbles", name: "Fruity Pebbles", group: "mix", shelf: "cereal", color: "#d9608f", unit: "box", unitNote: "about 19 oz, a 38 oz Sam's box counts as 2", perUnit: 42, supplier: "sams", buy: "Fruity Pebbles, 38 oz", pack: 2.0, price: 6.48, step: 0.25 },
@@ -28,9 +28,18 @@ const Engine = (() => {
     { key: "graham", name: "Graham crackers", group: "mix", shelf: "cookies", color: "#b9874f", unit: "pack", unitNote: "4 boxes, about 208 half crackers", perUnit: 208, supplier: "sams", buy: "Honey Maid Graham Crackers, 4-pack", pack: 1, price: 8.98, step: 0.25 },
     { key: "matcha", name: "Matcha", group: "mix", shelf: "other", color: "#6f9a4a", unit: "bag", unitNote: "14.1 oz", perUnit: 110, supplier: "sams", buy: "Jade Leaf Matcha Latte Mix, 14.1 oz", pack: 1, price: 19.48, step: 0.25 },
     { key: "granola", name: "Granola", group: "mix", shelf: "other", color: "#b08a52", unit: "bag", unitNote: "32 oz", perUnit: 50, supplier: "sams", buy: "Member's Mark Honey Almond Granola, 32 oz", pack: 1, price: 6.56, step: 0.25 },
+    { key: "biscoff", name: "Biscoff", group: "mix", shelf: "cookies", color: "#b5733a", unit: "pack", unitNote: "8.8 oz, 32 cookies", perUnit: 32, supplier: "any", buy: "Biscoff cookies, 8.8 oz pack", pack: 1, price: 0, step: 0.25 },
+    // Exclusive toppings. Square has no button for them, so they change only when counted
+    // or delivered, and the app never reorders them.
+    { key: "chips", name: "Chips", group: "excl", color: "#e0b43c", unit: "bag", unitNote: "Ruffles, 15.6 oz", perUnit: 1, supplier: "sams", buy: "Ruffles Original Potato Chips, 15.625 oz", pack: 1, price: 4.48, step: 0.25, manual: true },
+    { key: "pretzels", name: "Pretzels", group: "excl", color: "#a8662e", unit: "barrel", unitNote: "Utz Mini Twists, 60 oz", perUnit: 1, supplier: "sams", buy: "Utz Mini Twist Pretzels, 60 oz", pack: 1, price: 8.54, step: 0.25, manual: true },
+    { key: "reesescups", name: "Reese's cups", group: "excl", color: "#e2702b", unit: "bag", unitNote: "65 snack-size cups", perUnit: 1, supplier: "sams", buy: "REESE'S Peanut Butter Cups, Snack Size, 65 pcs", pack: 1, price: 9.98, step: 0.25, manual: true },
     { key: "spoons", name: "Spoons", group: "supply", shelf: "supply", color: "#9aa3ad", unit: "box", unitNote: "600", perUnit: 600, supplier: "sams", buy: "Member's Mark Heavyweight Spoons, 600 ct", pack: 1, price: 16.82, step: 0.25 },
     { key: "coke", name: "Coke for floats", group: "supply", shelf: "supply", color: "#c4302b", unit: "can", perUnit: 1, supplier: "sams", buy: "Coca-Cola 12 oz cans, 35 pack", pack: 35, price: 20.38, step: 1 },
     { key: "rootbeer", name: "Root beer for floats", group: "supply", shelf: "supply", color: "#7b4b2a", unit: "can", perUnit: 1, supplier: "sams", buy: "Mug Root Beer mini cans, 30 pack", pack: 30, price: 15.48, step: 1 },
+    // Cleaning: counted by hand only. At buyAt or fewer, the app says to buy enough to get back to restockTo.
+    { key: "spray", name: "Cleaning spray", group: "clean", shelf: "clean", color: "#3f9fb5", unit: "bottle", perUnit: 1, supplier: "sams", buy: "Cleaning spray", pack: 1, price: 0, step: 1, manual: true, buyAt: 1, restockTo: 3 },
+    { key: "wipes", name: "Cleaning wipes", group: "clean", shelf: "clean", color: "#6fb58a", unit: "pack", perUnit: 1, supplier: "sams", buy: "Cleaning wipes", pack: 1, price: 0, step: 1, manual: true, buyAt: 1, restockTo: 2 },
   ];
   const BY_KEY = Object.fromEntries(CATALOG.map(c => [c.key, c]));
   const ICE = ["vanilla", "chocolate", "exclusive"];
@@ -46,9 +55,9 @@ const Engine = (() => {
     "Fruity Pebbles": "fruitypebbles", "Cap'n Crunch": "capncrunch", "Reece's Puffs": "reesespuffs",
     "Reese's Puffs": "reesespuffs", "Cocoa Puffs": "cocoapuffs", "Froot Loops": "frootloops",
     "Frosted Flakes": "frostedflakes", "Honey Nut Cheerios": "honeynut", "Graham Crackers": "graham", "Cookie Crisp": "cookiecrisp",
-    "Matcha": "matcha", "Granola": "granola",
+    "Matcha": "matcha", "Granola": "granola", "Biscoff": "biscoff",
   };
-  const MANUAL = new Set(["Biscoff", "Nutella", "Dairy Free Vanilla", "Cone"]);
+  const MANUAL = new Set(["Nutella", "Dairy Free Vanilla", "Cone"]);
   const BASE_MAP = { "Vanilla": "vanilla", "Chocolate": "chocolate", "Exclusive": "exclusive" };
 
   function usageOfRow(list, mod, item, qty) {
@@ -100,21 +109,26 @@ const Engine = (() => {
   }
 
   // ---------- Square rows -> tables ----------
-  function dailyTables(rows) {
-    const base = {}, usage = {};
+  // exNames: lowercase names of exclusive flavors, in case Square ever gets a button per flavor.
+  function dailyTables(rows, exNames) {
+    const base = {}, usage = {}, ex = exNames || new Set();
     for (const r of rows) {
       const b = (base[r.day] ||= { vanilla: 0, chocolate: 0, exclusive: 0, any: 0 });
-      if (r.list === "Ice Cream Base") { b.any += r.qty; if (BASE_MAP[r.mod]) b[BASE_MAP[r.mod]] += r.qty; }
+      if (r.list === "Ice Cream Base") { b.any += r.qty; if (BASE_MAP[r.mod]) b[BASE_MAP[r.mod]] += r.qty; else if (ex.has(String(r.mod).toLowerCase())) b.exclusive += r.qty; }
       const u = usageOfRow(r.list, r.mod, r.item, r.qty).items, d = (usage[r.day] ||= {});
       for (const k in u) d[k] = (d[k] || 0) + u[k];
     }
     return { base, usage };
   }
-  function usageSince(hourlyRows, sinceStamp) {
+  // Hourly rows count from the count's hour on, unless the count came in that hour's second half.
+  function afterCount(hour, sinceStamp) {
     const sinceHour = sinceStamp.slice(0, 13) + ":00:00", min = +sinceStamp.slice(14, 16);
+    return !(hour < sinceHour || (hour === sinceHour && min >= 30));
+  }
+  function usageSince(hourlyRows, sinceStamp) {
     const out = {}, unmapped = new Set();
     for (const r of hourlyRows) {
-      if (r.hour < sinceHour || (r.hour === sinceHour && min >= 30)) continue;
+      if (!afterCount(r.hour, sinceStamp)) continue;
       const { items, unmapped: u } = usageOfRow(r.list, r.mod, r.item, r.qty);
       if (u) unmapped.add(u);
       for (const k in items) out[k] = (out[k] || 0) + items[k];
@@ -130,7 +144,12 @@ const Engine = (() => {
     const out = {}, unmapped = new Set();
     for (const cat of CATALOG) {
       const c = latest[cat.key];
-      if (!c) { out[cat.key] = null; continue; }
+      if (!c) {
+        // Hand-counted items that were never counted still show what has been delivered.
+        const got = cat.manual ? deliveries.filter(d => d.item === cat.key).reduce((s, d) => s + d.qty, 0) : 0;
+        out[cat.key] = got > 0 ? { value: got, counted: null, countedAt: null, delivered: got, used: 0, usedRaw: 0, uncounted: true } : null;
+        continue;
+      }
       const { usage, unmapped: um } = usageSince(hourlyRows, localStamp(new Date(c.at)));
       um.forEach(u => unmapped.add(u));
       const delivered = deliveries.filter(d => d.item === cat.key && d.at > c.at).reduce((s, d) => s + d.qty, 0);
@@ -138,6 +157,34 @@ const Engine = (() => {
       out[cat.key] = { value: c.value + delivered - used, counted: c.value, countedAt: c.at, delivered, used, usedRaw: usage[cat.key] || 0 };
     }
     return { stock: out, unmapped: [...unmapped] };
+  }
+
+  // ---------- exclusive flavors ----------
+  // st.exclusives: [{ name, serving, since }]. Square has one "Exclusive" button, so its
+  // sales are split evenly across the flavors being served right now. A base option named
+  // after a flavor (if Square ever gets one) counts for that flavor alone. Counts of a flavor
+  // from before it was added (since) don't apply.
+  const exList = st => Array.isArray(st.exclusives) ? st.exclusives.filter(f => f && f.name) : [];
+  const exActive = st => Array.isArray(st.exclusives) ? exList(st).some(f => f.serving) : !!(st.exclusive && st.exclusive.active);
+  function exclusiveStocks(counts, deliveries, hourlyRows, st) {
+    const flavors = exList(st), serving = flavors.filter(f => f.serving).length, out = {};
+    for (const f of flavors) {
+      const nm = f.name.toLowerCase();
+      let c = null;
+      for (const x of counts) if (x.item === "exclusive" && String(x.name || "").toLowerCase() === nm && (!f.since || x.at >= f.since) && (!c || x.at > c.at)) c = x;
+      if (!c) { out[f.name] = null; continue; }
+      const since = localStamp(new Date(c.at));
+      let sold = 0;
+      for (const r of hourlyRows) {
+        if (r.list !== "Ice Cream Base" || !afterCount(r.hour, since)) continue;
+        if (r.mod === "Exclusive") { if (f.serving && serving) sold += r.qty / serving; }
+        else if (String(r.mod).toLowerCase() === nm) sold += r.qty;
+      }
+      const delivered = deliveries.filter(d => d.item === "exclusive" && String(d.name || "").toLowerCase() === nm && d.at > c.at).reduce((s, d) => s + d.qty, 0);
+      const used = sold / st.yields.exclusive;
+      out[f.name] = { value: c.value + delivered - used, counted: c.value, countedAt: c.at, delivered, used, usedRaw: sold };
+    }
+    return out;
   }
 
   // ---------- forecasting ----------
@@ -167,7 +214,7 @@ const Engine = (() => {
       else { const r = openDays(base, today, 7); const m = r.length ? r.reduce((s, d) => s + base[d][f], 0) / r.length / y : 0; hi[f] = 1.5 * m; lo[f] = 0.5 * m; mean[f] = m; }
     }
     hi.exclusive = lo.exclusive = mean.exclusive = 0;
-    if (st.exclusive && st.exclusive.active) {
+    if (exActive(st)) {
       const share = exclusiveShare(base, today), y = st.yields.exclusive;
       const nightScoops = d => base[d].vanilla + base[d].chocolate + base[d].exclusive;
       const ref = past.length ? past.map(nightScoops) : openDays(base, today, 7).map(nightScoops);
@@ -313,7 +360,7 @@ const Engine = (() => {
   // order stops the app from asking for the same things again.
   function planSupplies({ stock, base, usage, settings: st, nowStamp, pending }) {
     const biz = stampBusinessDate(nowStamp);
-    const items = CATALOG.filter(c => c.group !== "ice");
+    const items = CATALOG.filter(c => c.group !== "ice" && !c.manual);
     const incoming = {};
     for (const o of pending || []) for (const [k, q] of Object.entries(o.lines || {})) {
       if (BY_KEY[k] && BY_KEY[k].group !== "ice" && q > 0) incoming[k] = (incoming[k] || 0) + q * (BY_KEY[k].pack || 1);
@@ -349,7 +396,16 @@ const Engine = (() => {
       }
       plans[sup] = { orderToday: due.length > 0, due: due.map(r => r.key), needBy, basket: basket.sort((a, b) => a.cover - b.cover), value: value() };
     }
-    return { rows, plans };
+    // Cleaning is counted by hand. At buyAt or fewer (and nothing already on order) it needs
+    // buying, enough to get back to restockTo. It never forces an order on its own.
+    const clean = CATALOG.filter(c => c.group === "clean").map(c => {
+      const s = stock[c.key], inc = incoming[c.key] || 0;
+      if (!s) return { key: c.key, status: "uncounted" };
+      const have = Math.max(0, s.value);
+      return { key: c.key, stock: s.value, incoming: inc, countedAt: s.countedAt, status: inc > 0 ? "ordered" : have <= c.buyAt + 1e-9 ? "buy" : "ok", packs: Math.max(1, Math.ceil(c.restockTo - have - inc - 1e-9)) };
+    });
+    plans.clean = { basket: clean.filter(r => r.status === "buy").map(r => ({ key: r.key, packs: r.packs, low: true })) };
+    return { rows, plans, clean };
   }
 
   // ---------- learning from counts ----------
@@ -371,6 +427,6 @@ const Engine = (() => {
   }
 
   return { TZ, CATALOG, BY_KEY, ICE, SUPPLIER, EXCLUSIVE_OPTIONS, DOW, DOW_LONG, usageOfRow, localStamp, businessDate, addDays, weekday, stampBusinessDate,
-    exclusiveShare, quarter, fmtQ, fmtUnits, dailyTables, usageSince, estimates, forecastNight, mixNight, nightFloor, shares, flavorFloors, planGordon, simulateWeek, planSupplies, learn, perUnit };
+    exclusiveShare, exList, exActive, exclusiveStocks, afterCount, quarter, fmtQ, fmtUnits, dailyTables, usageSince, estimates, forecastNight, mixNight, nightFloor, shares, flavorFloors, planGordon, simulateWeek, planSupplies, learn, perUnit };
 })();
 if (typeof module !== "undefined") module.exports = Engine;

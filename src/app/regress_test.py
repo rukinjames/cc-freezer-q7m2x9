@@ -44,7 +44,7 @@ async def main():
         # 10. delivery: no exclusive when off; brownie packs
         await pg.click(".bar-bottom [data-act=open-delivery]"); await pg.wait_for_timeout(200)
         opts = await pg.eval_on_selector_all("#delItem option", "els => els.map(e => e.value)")
-        check("10 delivery hides exclusive when none is running", "exclusive" not in opts)
+        check("10 delivery never lists the exclusive (set from Update exclusive)", "exclusive" not in opts and "chips" in opts and "spray" in opts)
         await pg.select_option("#delItem", "brownies"); await pg.wait_for_timeout(100)
         await pg.click('.sheet [data-step="1"][data-id="delpk"]'); await pg.click('.sheet [data-step="1"][data-id="delpk"]')
         await pg.click("[data-act=save-delivery]"); await pg.wait_for_timeout(800)
@@ -78,12 +78,12 @@ async def main():
         check("5 floor = cap causes no sideways scroll", await pg.evaluate("() => document.documentElement.scrollWidth <= window.innerWidth"))
         # 7. activity keeps each exclusive's own name; 8. undone orders hidden
         srv = Srv(base); pg = await page(br, srv, "2026-10-14T19:30:00Z")
-        await pg.click("#freezer [data-act=open-exclusive]"); await pg.wait_for_timeout(200); await pg.fill("#ex-name", "Mint Chip"); await pg.click('.sheet [data-step="1"][data-id="ex"]'); await pg.click("[data-act=save-exclusive]"); await pg.wait_for_timeout(800)
+        await pg.click("#exclusive [data-act=open-exclusive]"); await pg.wait_for_timeout(200); await pg.fill("#x-new", "Mint Chip"); await pg.click("[data-act=add-flavor]"); await pg.click('.sheet [data-step="1"][data-id="xf0"]'); await pg.click("[data-act=save-exclusive]"); await pg.wait_for_timeout(800)
         await pg.clock.set_fixed_time("2026-10-14T19:40:00Z")
-        await pg.click("#freezer [data-act=open-exclusive]"); await pg.wait_for_timeout(200); await pg.fill("#ex-name", "Moose Tracks"); await pg.click('.sheet [data-step="1"][data-id="ex"]'); await pg.click("[data-act=save-exclusive]"); await pg.wait_for_timeout(800)
-        act = await pg.inner_text("#activity"); fr = await pg.inner_text("#freezer")
-        check("7 activity keeps the old flavor's name", "Counted Mint Chip ¼" in act and "Counted Moose Tracks" in act, act[:200].replace("\n", " | "))
-        check("7 freezer shows only the new flavor", "Moose Tracks" in fr and "Mint Chip" not in fr)
+        await pg.click("#exclusive [data-act=open-exclusive]"); await pg.wait_for_timeout(200); await pg.click('[data-act=rm-flavor][data-i="0"]'); await pg.fill("#x-new", "Moose Tracks"); await pg.click("[data-act=add-flavor]"); await pg.click('.sheet [data-step="1"][data-id="xf0"]'); await pg.click("[data-act=save-exclusive]"); await pg.wait_for_timeout(800)
+        act = await pg.inner_text("#activity"); fr = await pg.inner_text("#exclusive")
+        check("7 activity keeps the old flavor's name", "counted mint chip ¼" in act.lower() and "counted moose tracks" in act.lower(), act[:200].replace("\n", " | "))
+        check("7 exclusive shows only the new flavor", "Moose Tracks" in fr and "Mint Chip" not in fr)
         if await pg.query_selector("[data-act=place-sams]"):
             await pg.click("[data-act=place-sams]"); await pg.wait_for_timeout(200); await pg.click("[data-act=save-order]"); await pg.wait_for_timeout(800)
             await pg.click(".toast-act"); await pg.wait_for_timeout(800)

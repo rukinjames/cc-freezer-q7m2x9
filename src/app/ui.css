@@ -226,3 +226,7 @@ input[type="number"] { width: 6.5em; font-variant-numeric: tabular-nums; }
 .team-row { gap: 8px; }
 .team-row input[type=text] { max-width: 9.5em; }
 .team-row input[type=tel] { flex: 1; min-width: 0; padding: 9px 11px; border-radius: 10px; border: 1px solid var(--rule-strong); background: var(--ground); min-height: 44px; font-size: 1rem; }
+.field.add-line { grid-template-columns: minmax(0, 1fr); }
+.field.add-line select { width: 100%; }
+.field .times { grid-column: 1 / -1; }
+.field .times input { flex: 1 1 7em; min-width: 0; }
