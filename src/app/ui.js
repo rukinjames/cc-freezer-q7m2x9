@@ -12,7 +12,7 @@ const DEFAULTS = {
 // Business nights from Square's posted hours, Sunday first
 const HOURS = ["8 to 11 PM", "8 to 11 PM", "8 to 11 PM", "8 to 11 PM", "8 PM to 2 AM", "8 PM to 2 AM", "8 PM to 2 AM"];
 const S = { data: { settingsDoc: null, counts: [], deliveries: [], orders: [] }, canSave: false, daily: null, hourly: null,
-  sq: { state: "loading" }, lastSync: null, syncing: false, booted: false, epoch: 0, confirmCancel: null };
+  sq: { state: "loading" }, lastSync: null, syncing: false, booted: false, epoch: 0, confirmCancel: null, tab: "today", keep: {} };
 const $ = id => document.getElementById(id);
 // The app's markup. On the website it ships inside a <template>, so nothing of the app
 // is on screen until the server has accepted the passcode.
@@ -231,6 +231,12 @@ function model() {
 }
 
 // ---------- render ----------
+// Three tabs: Today (what to do), Stock (what's here), Activity (what happened).
+function applyTab() {
+  document.querySelectorAll("[data-tabpane]").forEach(p => { p.hidden = p.dataset.tabpane !== S.tab; });
+  document.querySelectorAll(".tabbtn").forEach(b => { const on = b.dataset.tab === S.tab; b.classList.toggle("on", on); if (on) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); });
+}
+function setTab(t) { if (!["today", "stock", "activity"].includes(t)) return; S.tab = t; applyTab(); window.scrollTo(0, 0); }
 function renderStatus() {
   if (!$("status")) return;
   const st = settings(), today = E.businessDate(new Date()), ns = nowStamp();
@@ -259,7 +265,7 @@ function render() {
   if (m.ready && m.unmapped && m.unmapped.length) a += `<div class="flag soon"><strong>New items in Square</strong><span>Not tracked yet: ${m.unmapped.map(esc).join(", ")}. Ask Claude to add them.</span></div>`;
   if (S.truncated) a += `<div class="flag soon"><span>Some items haven't been counted in a long time. Recount them so their numbers stay accurate.</span></div>`;
   $("alerts").innerHTML = a;
-  renderFreezer(m); renderGordon(m); renderSams(m); renderPantry(m); renderExclusive(m); renderWeek(m); renderActivity(m);
+  renderToday(m); renderFreezer(m); renderPantry(m); renderExclusive(m); renderWeek(m); renderActivity(m); applyTab();
 }
 
 const LID = { v: ["var(--van)", "var(--van-rim)"], c: ["var(--choc)", "var(--choc-rim)"], e: ["var(--mint)", "var(--mint-rim)"] };
@@ -358,8 +364,9 @@ function lineHTML(key, qty, st, note) {
   const c = E.BY_KEY[key], code = codeOf(key, st), price = priceOf(key, st);
   if (!c) return "";
   const label = c.group === "ice" ? `${nameOf(key, st)} tub${qty === 1 ? "" : "s"}` : (c.buy || c.name);
-  const sub = [SUP[c.supplier] ? `from ${SUP[c.supplier]}` : "", code ? `item ${code}` : "", note || ""].filter(Boolean).join(", ");
-  return `<div class="line"><span class="q">${qty}</span><span class="what">${esc(label)}<br><span class="code">${esc(sub)}</span></span><span class="cost">${price ? money(qty * price) : ""}</span></div>`;
+  // The card already names the store; only items bought anywhere say so.
+  const sub = [c.supplier === "any" ? "any store" : "", code ? `item ${code}` : "", note || ""].filter(Boolean).join(", ");
+  return `<div class="line"><span class="q">${qty}</span><span class="what">${esc(label)}${sub ? `<br><span class="code">${esc(sub)}</span>` : ""}</span><span class="cost">${price ? money(qty * price) : ""}</span></div>`;
 }
 function orderText(lines, st, supplier, extra) {
   return `${SUP[supplier]} order${extra ? ", " + extra : ""}\n` + Object.entries(lines).filter(([, q]) => q > 0).map(([k, q]) => {
@@ -369,116 +376,147 @@ function orderText(lines, st, supplier, extra) {
 function cancelBox(o) {
   return `<div class="flag now"><strong>Cancel this order?</strong><span>Do this if you didn't actually place it, or it isn't coming. The app will plan the order again.</span><div class="actions"><button class="btn primary" data-act="confirm-cancel" data-id="${esc(o.id)}">Yes, cancel it</button><button class="btn" data-act="keep-order">Keep it</button></div></div>`;
 }
-function placedCard(o, m) {
-  const st = m.st, late = o.arrivesOn < m.cal, dueNow = o.arrivesOn <= m.cal;
-  const lines = Object.entries(o.lines || {}).filter(([, q]) => q > 0);
-  return `<div class="panel">
-    <div class="section-head"><h2>${SUP[o.supplier]} order ${late ? "was due " + E.DOW_LONG[E.weekday(o.arrivesOn)] : "placed"}</h2><span class="pill ${late ? "soon" : "ok"}">${late ? "Late" : "Arrives " + dayWord(o.arrivesOn, m.cal)}</span></div>
-    <div class="lines">${lines.map(([k, q]) => lineHTML(k, q, st)).join("")}</div>
-    ${o.window ? `<p class="note">Arrives ${dayWord(o.arrivesOn, m.cal)}, ${esc(o.window)}.</p>` : ""}${pickupHTML(o)}
-    ${S.confirmCancel === o.id ? cancelBox(o) : `<div class="actions"><button class="btn ${dueNow ? "primary" : ""}" data-act="arrived" data-id="${esc(o.id)}">It arrived</button><button class="btn" data-act="edit-order" data-id="${esc(o.id)}">Change</button><button class="btn" data-act="cancel-order" data-id="${esc(o.id)}">Cancel order</button></div>`}
-  </div>`;
-}
-function dueHTML(m, supplier, skip) {
-  return (m.due || []).filter(o => o.supplier === supplier && !(skip || []).includes(o.id)).map(o => {
-    const items = Object.entries(o.lines || {}).filter(([, q]) => q > 0).map(([k, q]) => `${q} ${nameOf(k, m.st).toLowerCase()}`).join(", ");
-    const late = o.arrivesOn < m.cal;
-    return `<div class="flag soon"><strong>${SUP[supplier]} delivery ${late ? "was due " + E.DOW_LONG[E.weekday(o.arrivesOn)] : "due today"}${o.window ? ", " + esc(o.window) : ""}</strong><span>${esc(items)}</span><div class="actions"><button class="btn primary" data-act="arrived" data-id="${esc(o.id)}">It arrived</button><button class="btn" data-act="notcoming" data-id="${esc(o.id)}">It didn't come</button></div></div>`;
-  }).join("");
+const capFirst = t => t.charAt(0).toUpperCase() + t.slice(1);
+const andList = a => a.length <= 2 ? a.join(" and ") : a.slice(0, -1).join(", ") + " and " + a[a.length - 1];
+const chipsHTML = (lines, st) => `<div class="chips">${lines.map(([k, q]) => `<span class="chip"><b>${q}</b>${esc(nameOf(k, st))}</span>`).join("")}</div>`;
+// A placed order, short: what's in it, when, who's picking it up, and what to do.
+function orderCard(o, m, extra) {
+  const st = m.st, late = o.arrivesOn < m.cal, due = o.arrivesOn <= m.cal;
+  const lines = Object.entries(o.lines || {}).filter(([k, q]) => q > 0 && E.BY_KEY[k]);
+  const whenTxt = late ? `Was due ${E.DOW_LONG[E.weekday(o.arrivesOn)]}` : `${capFirst(dayWord(o.arrivesOn, m.cal))}${o.window ? ", " + o.window : ""}`;
+  const actions = S.confirmCancel === o.id ? cancelBox(o) : `<div class="actions"><button class="btn ${due ? "primary" : ""}" data-act="arrived" data-id="${esc(o.id)}">It arrived</button><button class="btn" data-act="edit-order" data-id="${esc(o.id)}">Change</button>${late ? `<button class="btn quiet" data-act="notcoming" data-id="${esc(o.id)}">It didn't come</button>` : `<button class="btn quiet" data-act="cancel-order" data-id="${esc(o.id)}">Cancel order</button>`}</div>`;
+  return `<article class="panel ${due ? "act" : ""}" data-sup="${esc(o.supplier)}" data-order="${esc(o.id)}">
+    <div class="card-head"><h2>${SUP[o.supplier]} delivery</h2><span class="${late ? "pill soon" : due ? "when-chip" : "pill ok"}">${esc(whenTxt)}</span></div>
+    ${chipsHTML(lines, st)}${o.restOf ? `<p class="note">The rest of an earlier order, still on its way.</p>` : ""}
+    ${pickupHTML(o)}${extra || ""}${actions}</article>`;
 }
 function windowsText(p, cal) {
   const day = p.arriveOn === cal ? "today" : "tomorrow";
   return p.windows.map(w => `by ${clock(w.cutoff)} ${day} for ${w.label}`).join(", or ");
 }
-function renderGordon(m) {
-  const el = $("gordon"), st = m.st;
-  if (!m.ready) { el.innerHTML = `<div class="panel"><h2>Gordon's</h2><p class="muted">${S.sq.state === "error" ? "Needs sales from Square to plan the order." : "Reading sales from Square…"}</p></div>`; return; }
-  if (!m.iceKnown) { el.innerHTML = `<div class="panel"><h2>Gordon's</h2><p class="muted">Count vanilla and chocolate to get today's order.</p></div>`; return; }
-  const p = m.plan, gplan = m.sup.plans.gordon;
-  const shown = p.mode === "ordered" ? m.pendingGordon.filter(o => o.arrivesOn === p.arriveOn).map(o => o.id) : [];
-  const due = dueHTML(m, "gordon", shown);
-  const urgent = p.urgent.length ? `<div class="flag soon"><span>A busy night could take ${p.urgent.map(f => nameOf(f, st).toLowerCase()).join(" and ")} under tonight's floor. The next Gordon's delivery can't arrive until ${dayWord(p.arriveOn, m.cal)} afternoon.</span></div>` : "";
+// Cards for the Today tab. pri 0 = do it now, 1 = soon, 2 = nothing to do (shown under Coming up).
+function gordonCards(m) {
+  const st = m.st, out = [];
+  const pend = S.data.orders.filter(o => o.status === "placed" && o.supplier === "gordon");
   S.lastGordon = null;
+  if (!m.iceKnown) {
+    pend.forEach(o => out.push({ pri: o.arrivesOn <= m.cal ? 0 : 2, html: orderCard(o, m) }));
+    out.push({ pri: 1, html: `<article class="panel act" data-sup="gordon"><div class="card-head"><h2>Count vanilla and chocolate</h2></div><p>Gordon's orders are planned from the freezer count.</p><div class="actions"><button class="btn primary" data-act="open-count">Count</button></div></article>` });
+    return out;
+  }
+  const p = m.plan, gplan = m.sup.plans.gordon;
+  const urgent = p.urgent.length ? `<div class="flag soon"><span>A busy night could take ${andList(p.urgent.map(f => nameOf(f, st).toLowerCase()))} under tonight's floor. The next Gordon's delivery can't arrive until ${dayWord(p.arriveOn, m.cal)} afternoon.</span></div>` : "";
+  let extraUsed = false;
+  for (const o of pend) {
+    let extra = "";
+    if (p.mode === "ordered" && o.arrivesOn === p.arriveOn && !extraUsed) {
+      extraUsed = true;
+      extra = (p.trim ? `<div class="flag now"><strong>Cut ${p.trim.over} ${esc(nameOf(p.trim.flavor, st).toLowerCase())} from this order.</strong><span>As ordered, the freezer would hit about ${fmtQ(p.atArrival)} tubs, over the ${st.cap} limit. Change it in Gordon Ordering, then update it here.</span><div class="actions"><button class="btn primary" data-act="edit-order" data-id="${esc(o.id)}">Update the order</button></div></div>`
+        : `<p class="note">The freezer should hold about ${fmtQ(p.atArrival)} of ${st.cap} tubs after it arrives.</p>`) + urgent;
+    }
+    out.push({ pri: o.arrivesOn <= m.cal || (extra && p.trim) ? 0 : 2, html: orderCard(o, m, extra) });
+  }
   if (p.mode === "order") {
     const ice = Object.entries(p.order).filter(([, q]) => q > 0);
     const addons = (gplan.basket || []).filter(x => x.cover < 21);
-    const lines = Object.fromEntries(Object.entries(p.order).filter(([, q]) => q > 0)); addons.forEach(x => { lines[x.key] = x.packs; });
-    const total = Object.entries(lines).reduce((s, [k, q]) => s + q * priceOf(k, st), 0);
+    const lines = Object.fromEntries(ice); addons.forEach(x => { lines[x.key] = x.packs; });
+    const total = Object.entries(lines).reduce((t, [k, q]) => t + q * priceOf(k, st), 0);
     const fee = total < st.gordon.minimum;
     S.lastGordon = { lines, arriveOn: p.arriveOn, window: (p.windows[0] || st.gordon.windows[st.gordon.windows.length - 1]).label };
-    const day = dayWord(p.arriveOn, m.cal);
-    el.innerHTML = `${due}<div class="panel act">
-      <div class="section-head"><h2>${p.arriveOn === m.cal ? "Order from Gordon's this morning" : "Order from Gordon's tomorrow morning"}</h2><span class="when-chip">Arrives ${day}</span></div>
-      <p class="lead">${ice.map(([k, q]) => lineLabel(k, q, st)).join(" and ")} from Gordon's${addons.length ? ", plus " + addons.map(x => nameOf(x.key, st).toLowerCase()).join(" and ") : ""}.</p>
+    out.push({ pri: 0, html: `<article class="panel act" data-sup="gordon">
+      <div class="card-head"><h2>${p.arriveOn === m.cal ? "Order from Gordon's this morning" : "Order from Gordon's tomorrow morning"}</h2><span class="when-chip">Arrives ${dayWord(p.arriveOn, m.cal)}</span></div>
+      <p class="lead">${andList(ice.map(([k, q]) => lineLabel(k, q, st)))}${addons.length ? ", plus " + andList(addons.map(x => nameOf(x.key, st).toLowerCase())) : ""}</p>
       <p class="note">Order ${windowsText(p, m.cal)} delivery. ${esc(p.reasons.join(". "))} without it.</p>
       <div class="lines">${Object.entries(lines).map(([k, q]) => lineHTML(k, q, st, E.BY_KEY[k].group !== "ice" ? "running low, added to save a delivery" : "")).join("")}</div>
       <div class="sum"><span>Total</span><span class="tnum">${money(total)}</span></div>
       ${fee ? `<div class="flag soon"><span>Under ${money(st.gordon.minimum)}, Gordon's adds a ${money(st.gordon.fee)} delivery fee.</span></div>` : ""}
       <p class="note">When it arrives the freezer will hold about ${fmtQ(p.atArrival)} of ${st.cap} tubs.</p>
       ${urgent}
-      <div class="actions"><button class="btn primary" data-act="place-gordon">I placed this order</button><button class="btn" data-act="copy-gordon">Copy order</button></div></div>`;
-  } else if (p.mode === "ordered") {
-    const os = m.pendingGordon.filter(o => o.arrivesOn === p.arriveOn), id = os[0] && os[0].id;
-    const items = os.flatMap(x => Object.entries(x.lines || {}).filter(([, q]) => q > 0)).map(([k, q]) => lineHTML(k, q, st)).join("");
-    el.innerHTML = `${due}<div class="panel">
-      <div class="section-head"><h2>Gordon's order is in</h2><span class="pill ok">Arrives ${dayWord(p.arriveOn, m.cal)}</span></div>
-      <div class="lines">${items}</div>
-      ${p.trim ? `<div class="flag now"><strong>Cut ${p.trim.over} ${esc(nameOf(p.trim.flavor, st).toLowerCase())} from this order.</strong><span>As ordered, the freezer would hit about ${fmtQ(p.atArrival)} tubs, over the ${st.cap} limit. Change it in Gordon Ordering, then update it here.</span><div class="actions"><button class="btn primary" data-act="edit-order" data-id="${esc(id)}">Update the order</button></div></div>` : `<p class="note">The freezer should hold about ${fmtQ(p.atArrival)} of ${st.cap} tubs after it arrives.</p>`}
-      ${os.map(pickupHTML).join("")}${urgent}${S.confirmCancel === id ? cancelBox(os[0]) : `<div class="actions"><button class="btn ${p.arriveOn <= m.cal ? "primary" : ""}" data-act="arrived" data-id="${esc(id)}">It arrived</button><button class="btn" data-act="edit-order" data-id="${esc(id)}">Change quantities</button><button class="btn" data-act="cancel-order" data-id="${esc(id)}">Cancel order</button></div>`}</div>`;
-  } else {
+      <div class="actions"><button class="btn primary" data-act="place-gordon">I placed this order</button><button class="btn" data-act="copy-gordon">Copy order</button></div></article>` });
+  } else if (p.mode !== "ordered") {
+    if (gplan.orderToday) {
+      const n = Math.min(...m.sup.rows.filter(r => gplan.due.includes(r.key)).map(r => r.cover));
+      out.push({ pri: 0, html: `<article class="panel act" data-sup="gordon"><div class="card-head"><h2>${andList(gplan.due.map(k => nameOf(k, st)))} ${gplan.due.length > 1 ? "are" : "is"} almost out</h2><span class="when-chip">${n <= 0 ? "Out tonight" : `${n} night${n === 1 ? "" : "s"} left`}</span></div>
+        <p>Nothing else from Gordon's is due, so either order ${andList(gplan.basket.filter(x => gplan.due.includes(x.key)).map(x => lineLabel(x.key, x.packs, st)))} from Gordon's now (under ${money(st.gordon.minimum)} adds the ${money(st.gordon.fee)} fee) or pick some up and add it as a delivery.</p>
+        <div class="actions"><button class="btn primary" data-act="place-gordon-addons">Order from Gordon's</button><button class="btn" data-act="bought-any" data-key="${esc(gplan.due[0])}" data-qty="1" data-src="other">I picked some up</button></div></article>` });
+    }
     const next = (m.week || []).find((n, k) => k > 0 && n.ordered);
-    const nextTxt = next ? `Next order is likely ${E.DOW_LONG[E.weekday(next.ds)]} morning, about ${Object.entries(next.ordered).filter(([, q]) => q > 0).map(([k, q]) => lineLabel(k, q, st).toLowerCase()).join(" and ")} from Gordon's.` : "No Gordon's order looks needed this week.";
+    const nextTxt = next ? `Next order is likely ${E.DOW_LONG[E.weekday(next.ds)]} morning, about ${andList(Object.entries(next.ordered).filter(([, q]) => q > 0).map(([k, q]) => lineLabel(k, q, st).toLowerCase()))}.` : "No Gordon's order looks needed this week.";
     const fl = p.floorA0 ? `${fmtQ(p.floorA0.vanilla)} vanilla and ${fmtQ(p.floorA0.chocolate)} chocolate` : "";
-    el.innerHTML = `${due}<div class="panel">
-      <div class="section-head"><h2>No Gordon's order ${p.arriveOn === m.cal ? "today" : "needed tomorrow"}</h2><span class="pill ok">Stocked</span></div>
-      ${gplan.orderToday ? `<div class="flag now"><strong>${gplan.due.map(k => nameOf(k, st)).join(" and ")} ${gplan.due.length > 1 ? "are" : "is"} almost out.</strong><span>${(n => n <= 0 ? "It won't last tonight." : `About ${n} night${n === 1 ? "" : "s"} left.`)(Math.min(...m.sup.rows.filter(r => gplan.due.includes(r.key)).map(r => r.cover)))} Nothing else from Gordon's is due, so either order ${gplan.basket.filter(x => gplan.due.includes(x.key)).map(x => lineLabel(x.key, x.packs, st)).join(" and ")} from Gordon's now (under ${money(st.gordon.minimum)} adds the ${money(st.gordon.fee)} fee) or pick some up and add it as a delivery.</span><div class="actions"><button class="btn primary" data-act="place-gordon-addons">Order from Gordon's</button><button class="btn" data-act="bought-any" data-key="${esc(gplan.due[0])}" data-qty="1" data-src="other">I picked some up</button></div></div>` : ""}
-      <p>${p.mode === "full" ? `There's no room to add tubs without going over ${st.cap}.` : p.smallSkipped ? `Only a small top-up would fit, which would cost the ${money(st.gordon.fee)} fee. You stay close to the floor, so it waits for the next order.` : `Even a busy ${E.DOW_LONG[E.weekday(p.arriveOn)]} night leaves you above the floor of ${fl}.`} ${nextTxt}</p>${urgent}
-      <div class="actions"><button class="btn" data-act="log-gordon">Log an order you placed</button></div></div>`;
+    const why = p.mode === "full" ? `There's no room to add tubs without going over ${st.cap}.` : p.smallSkipped ? `Only a small top-up would fit, which would cost the ${money(st.gordon.fee)} fee, so it waits for the next order.` : `Even a busy ${E.DOW_LONG[E.weekday(p.arriveOn)]} night leaves you above the floor of ${fl}.`;
+    out.push({ pri: urgent ? 1 : 2, html: `<article class="panel ${urgent ? "act" : ""}" data-sup="gordon">
+      <div class="card-head"><h2>No Gordon's order ${p.arriveOn === m.cal ? "today" : "needed tomorrow"}</h2><span class="pill ok">Stocked</span></div>
+      <p>${nextTxt}</p><p class="note">${why}</p>${urgent}</article>` });
   }
+  return out;
 }
-function renderSams(m) {
-  const el = $("sams"), st = m.st;
-  if (!m.ready) { el.innerHTML = ""; return; }
-  const due = (m.pendingSams || []).map(o => placedCard(o, m)).join(""), plan = m.sup.plans.sams;
+function samsCards(m) {
+  const st = m.st, out = [], plan = m.sup.plans.sams;
   const anyPlan = m.sup.plans.any || { basket: [], due: [], orderToday: false };
   S.lastSams = null;
+  const pend = S.data.orders.filter(o => o.status === "placed" && o.supplier === "sams");
+  pend.forEach(o => out.push({ pri: o.arrivesOn <= m.cal ? 0 : 2, html: orderCard(o, m) }));
   const left = x => x.low ? `${E.fmtUnits(x.key, Math.max(0, m.stock[x.key].value))} left, buy more` : x.filler ? "added to reach the delivery minimum" : x.cover <= 0 ? "won't last tonight" : `about ${x.cover} night${x.cover === 1 ? "" : "s"} left`;
   const coverOf = keys => Math.min(...m.sup.rows.filter(r => keys.includes(r.key)).map(r => r.cover));
   const byWhen = cover => { const d = E.addDays(m.today, cover); return cover <= 0 ? "right away" : `before ${d === E.addDays(m.today, 1) ? "tomorrow night" : E.DOW_LONG[E.weekday(d)] + " night"}`; };
-  // Items bought at any store (Cookie Crisp) ride along with a Sam's order. If one runs low
+  // Items bought at any store (Cookie Crisp, Biscoff) ride along with a Sam's order. If one runs low
   // while nothing from Sam's is due, it gets its own short card instead of forcing a Sam's order.
   const anyAlone = anyPlan.orderToday && !plan.orderToday;
-  const anyHTML = anyAlone ? `<div class="panel act"><div class="section-head"><h2>Buy ${anyPlan.basket.map(x => nameOf(x.key, st)).join(" and ")} ${byWhen(coverOf(anyPlan.due))}</h2><span class="when-chip">Buy now</span></div>
+  if (anyAlone) out.push({ pri: 1, html: `<article class="panel act" data-sup="any"><div class="card-head"><h2>Buy ${andList(anyPlan.basket.map(x => nameOf(x.key, st)))} ${byWhen(coverOf(anyPlan.due))}</h2><span class="when-chip">Any store</span></div>
     <div class="lines">${anyPlan.basket.map(x => lineHTML(x.key, x.packs, st, left(x))).join("")}</div>
-    <div class="actions"><button class="btn" data-act="bought-any" data-key="${esc(anyPlan.basket[0].key)}" data-qty="${anyPlan.basket[0].packs}">I bought it</button></div></div>` : "";
+    <div class="actions"><button class="btn" data-act="bought-any" data-key="${esc(anyPlan.basket[0].key)}" data-qty="${anyPlan.basket[0].packs}">I bought it</button></div></article>` });
   // Cleaning at 1 or fewer rides along with the next Sam's order; with none planned it gets
   // its own card. It never makes an order happen by itself.
   const clean = (m.sup.plans.clean || { basket: [] }).basket;
-  const cleanLeft = x => `${E.fmtUnits(x.key, Math.max(0, m.stock[x.key].value))} left, buy more`;
-  const cleanHTML = clean.length && !plan.basket.length ? `<div class="panel act"><div class="section-head"><h2>Buy more ${clean.map(x => nameOf(x.key, st).toLowerCase()).join(" and ")}</h2><span class="when-chip">Buy soon</span></div>
-    <div class="lines">${clean.map(x => lineHTML(x.key, x.packs, st, cleanLeft(x))).join("")}</div>
+  if (clean.length && !plan.basket.length) out.push({ pri: 1, html: `<article class="panel act" data-sup="sams"><div class="card-head"><h2>Buy more ${andList(clean.map(x => nameOf(x.key, st).toLowerCase()))}</h2><span class="when-chip">Buy soon</span></div>
+    <div class="lines">${clean.map(x => lineHTML(x.key, x.packs, st, left(x))).join("")}</div>
     <p class="note">It goes on the next Sam's order by itself. If you pick some up first, add it so the count stays right.</p>
-    <div class="actions"><button class="btn" data-act="bought-any" data-key="${esc(clean[0].key)}" data-qty="${clean[0].packs}" data-src="sams">I bought it</button></div></div>` : "";
+    <div class="actions"><button class="btn" data-act="bought-any" data-key="${esc(clean[0].key)}" data-qty="${clean[0].packs}" data-src="sams">I bought it</button></div></article>` });
   const counted = m.sup.rows.some(r => E.BY_KEY[r.key].supplier === "sams" && r.status !== "uncounted");
-  if (!counted) { el.innerHTML = due + anyHTML + cleanHTML + `<div class="panel"><h2>Sam's Club</h2><p class="muted">Count your mix-ins to plan Sam's orders.</p></div>`; return; }
-  if (!plan.basket.length) { el.innerHTML = due + anyHTML + cleanHTML + (due ? "" : `<div class="panel"><div class="section-head"><h2>Sam's Club</h2><span class="pill ok">Stocked</span></div><p>Nothing needed for at least ${st.supplies.topUpBelow} nights.</p><div class="actions"><button class="btn" data-act="log-sams">Log an order you placed</button></div></div>`); return; }
+  if (!counted) { out.push({ pri: 1, html: `<article class="panel act" data-sup="sams"><div class="card-head"><h2>Count your mix-ins</h2></div><p>Sam's Club orders are planned from your mix-in counts.</p><div class="actions"><button class="btn primary" data-act="open-count">Count</button></div></article>` }); return out; }
+  if (!plan.basket.length) {
+    if (!pend.length) out.push({ pri: 2, html: `<article class="panel" data-sup="sams"><div class="card-head"><h2>No Sam's Club order needed</h2><span class="pill ok">Stocked</span></div><p>Nothing runs low for at least ${st.supplies.topUpBelow} nights.</p></article>` });
+    return out;
+  }
   const basket = plan.basket.concat(anyAlone ? [] : anyPlan.basket).concat(clean);
   const lines = Object.fromEntries(basket.map(x => [x.key, x.packs]));
   const total = plan.value, fee = total < st.supplies.samsMinimum;
   const needDay = plan.orderToday ? m.today : plan.needBy;
   const dueKeys = plan.due.concat(anyAlone ? [] : anyPlan.due);
-  // When something is due, say which night it would run out, so the deadline is clear at any hour.
-  const head = !plan.orderToday ? `Next Sam's Club order ${needDay ? (needDay === m.today ? "today" : needDay === E.addDays(m.today, 1) ? "tomorrow" : (needDay >= E.addDays(m.today, 7) ? "next " : "") + E.DOW_LONG[E.weekday(needDay)]) : "in a few weeks"}` : `Order from Sam's Club ${byWhen(coverOf(dueKeys))}`.replace("Club before", "Club, needed before");
   S.lastSams = { lines };
-  el.innerHTML = `${due}${anyHTML}<div class="panel ${plan.orderToday ? "act" : ""}">
-    <div class="section-head"><h2>${head}</h2><span class="${plan.orderToday ? "when-chip" : "pill soon"}">${plan.orderToday ? "Order now" : "Planned"}</span></div>
-    <p class="note">${plan.orderToday ? `${dueKeys.map(k => nameOf(k, st)).join(" and ")} can't wait another day.` : "Nothing is urgent yet. This is what the order will look like."} Everything running low is grouped into one order with about ${st.supplies.coverTo} nights of each.</p>
-    <div class="lines">${basket.map(x => lineHTML(x.key, x.packs, st, left(x))).join("")}</div>
+  const list = `<div class="lines">${basket.map(x => lineHTML(x.key, x.packs, st, left(x))).join("")}</div>
     <div class="sum"><span>Total</span><span class="tnum">${money(total)}</span></div>
-    ${fee ? `<div class="flag soon"><span>Still under ${money(st.supplies.samsMinimum)}, so Sam's may add a delivery fee.</span></div>` : ""}
-    <div class="actions">${plan.orderToday ? `<button class="btn primary" data-act="place-sams">I placed this order</button>` : ""}<button class="btn" data-act="copy-sams">Copy list</button>${!plan.orderToday ? `<button class="btn" data-act="place-sams">Order it now anyway</button>` : ""}</div></div>`;
+    ${fee ? `<div class="flag soon"><span>Still under ${money(st.supplies.samsMinimum)}, so Sam's may add a delivery fee.</span></div>` : ""}`;
+  if (plan.orderToday) {
+    out.push({ pri: 0, html: `<article class="panel act" data-sup="sams">
+      <div class="card-head"><h2>Order from Sam's Club ${byWhen(coverOf(dueKeys))}</h2><span class="when-chip">Order now</span></div>
+      <p class="note">${andList(dueKeys.map(k => nameOf(k, st)))} can't wait another day. Everything else running low rides along, with about ${st.supplies.coverTo} nights of each.</p>
+      ${list}<div class="actions"><button class="btn primary" data-act="place-sams">I placed this order</button><button class="btn" data-act="copy-sams">Copy list</button></div></article>` });
+  } else {
+    // Not urgent: a short preview, with the full list one tap away
+    const dayTxt = needDay ? (needDay === m.today ? "today" : needDay === E.addDays(m.today, 1) ? "tomorrow" : (needDay >= E.addDays(m.today, 7) ? "next " : "") + E.DOW_LONG[E.weekday(needDay)]) : "in a few weeks";
+    out.push({ pri: 2, html: `<article class="panel" data-sup="sams">
+      <div class="card-head"><h2>Next Sam's Club order ${dayTxt}</h2><span class="pill soon">Planned</span></div>
+      ${chipsHTML(Object.entries(lines), st)}
+      <details class="more" ${keep("samslist")}><summary>See the list</summary>${list}<div class="actions"><button class="btn" data-act="copy-sams">Copy list</button><button class="btn" data-act="place-sams">Order it now anyway</button></div></details></article>` });
+  }
+  return out;
 }
-
+function renderToday(m) {
+  const el = $("today"); if (!el) return;
+  const date = new Date().toLocaleDateString("en-US", { timeZone: E.TZ, weekday: "long", month: "long", day: "numeric" });
+  // Placed orders don't need sales, so pickups and arrivals still work if Square is down.
+  let cards = m.ready ? gordonCards(m).concat(samsCards(m))
+    : S.data.orders.filter(o => o.status === "placed" && SUP[o.supplier]).map(o => ({ pri: o.arrivesOn <= m.cal ? 0 : 2, html: orderCard(o, m) }));
+  const acts = cards.filter(c => c.pri < 2).sort((a, b) => a.pri - b.pri), info = cards.filter(c => c.pri === 2);
+  const n = acts.length;
+  const head = !m.ready && !n ? (S.sq.state === "error" ? "Sales aren't loading" : "Reading today's sales…") : n === 0 ? "Nothing to do right now" : n === 1 ? "1 thing to do" : `${n} things to do`;
+  document.querySelectorAll("[data-badge]").forEach(b => { b.textContent = n ? String(n) : ""; });
+  el.innerHTML = `<div class="today-head"><span class="muted">${esc(date)}</span><h1 class="headline">${esc(head)}</h1></div>
+    ${acts.map(c => c.html).join("")}
+    ${info.length ? `<div class="coming"><h2>Coming up</h2>${info.map(c => c.html).join("")}</div>` : ""}
+    ${m.ready ? `<div class="logrow"><span class="note">Placed an order the app didn't suggest?</span><div class="actions"><button class="btn quiet" data-act="log-gordon">Log a Gordon's order</button><button class="btn quiet" data-act="log-sams">Log a Sam's order</button></div></div>` : ""}`;
+}
 function pkgSVG(c, frac) {
   const col = c.color || "var(--accent)";
   const h = Math.max(0, Math.min(1, frac));
@@ -487,39 +525,46 @@ function pkgSVG(c, frac) {
   }
   return `<svg class="pkg" viewBox="0 0 16 24" aria-hidden="true"><rect x="1" y="3" width="14" height="20" rx="1.5" fill="var(--tub-empty)"/><rect x="1" y="${(3 + 20 * (1 - h)).toFixed(2)}" width="14" height="${(20 * h).toFixed(2)}" fill="${col}"/><rect x="1" y="3" width="14" height="20" rx="1.5" fill="none" stroke="var(--rule-strong)" stroke-width="1"/><path d="M1 3l2-2h10l2 2" fill="none" stroke="var(--rule-strong)" stroke-width="1"/></svg>`;
 }
+function pantryGood(r) {
+  const c = E.BY_KEY[r.key], label = { now: "Order now", soon: "Order soon", ok: "Fine" };
+  let units = Math.max(0, r.stock), amt = E.fmtUnits(r.key, r.stock), icons = "";
+  if (c.key === "brownies") { units = units / 48; amt = `${Math.round(Math.max(0, r.stock))} servings`; }
+  if (c.key === "oreos") amt += `, ${Math.round(Math.max(0, r.stock) * 156)} cookies`;
+  if (c.unit === "can") icons = `<span class="amt">${Math.round(units)}</span>`;
+  else icons = goodIcons(c, units);
+  const pct = c.unit !== "can" && units < 1 ? `${Math.round(units * 100)}% of a ${c.key === "brownies" ? "Little Debbie box" : c.unit} left` : amt;
+  const left = r.cover >= 28 ? "4+ weeks" : `${r.cover} night${r.cover === 1 ? "" : "s"}`;
+  return `<div class="good"><div class="pkgs">${icons}</div><div><div class="nm">${esc(c.name)}</div><div class="meta">${esc(pct)}</div></div><div class="right"><span class="pill ${r.incoming > 0 ? "ok" : r.status}">${r.incoming > 0 ? "Ordered" : label[r.status]}</span><span class="meta">${left}</span></div></div>`;
+}
+// Open/closed state of folded parts survives the refresh every 30 seconds
+// (on a laptop the pantry starts open, since there's room for it)
+const keep = (key, wideOpen) => { const saved = S.keep ? S.keep[key] : undefined; const open = saved === undefined ? !!(wideOpen && window.matchMedia && window.matchMedia("(min-width: 960px)").matches) : saved; return `data-keep="${key}" ${open ? "open" : ""}`; };
 function renderPantry(m) {
   const el = $("pantry");
   if (!m.ready) { el.innerHTML = `<div class="section-head"><h2>Pantry</h2></div><div class="empty">${S.sq.state === "error" ? "Needs sales from Square." : "Reading sales from Square…"}</div>`; return; }
-  const rows = m.sup.rows, label = { now: "Order now", soon: "Order soon", ok: "Fine" };
+  const rows = m.sup.rows.filter(r => r.status !== "uncounted");
   const SHELVES = [["cereal", "Cereal"], ["cookies", "Cookies, brownies and grahams"], ["fruit", "Fruit"], ["other", "Matcha and granola"], ["supply", "Spoons and float sodas"]];
-  let html = "";
-  for (const [shelf, title] of SHELVES) {
-    const mine = rows.filter(r => E.BY_KEY[r.key].shelf === shelf && r.status !== "uncounted");
-    if (!mine.length) continue;
-    html += `<div class="shelf"><div class="shelf-name">${title}</div><div class="goods">` + mine.map(r => {
-      const c = E.BY_KEY[r.key];
-      let units = Math.max(0, r.stock), amt = E.fmtUnits(r.key, r.stock), icons = "";
-      if (c.key === "brownies") { units = units / 48; amt = `${Math.round(Math.max(0, r.stock))} servings`; }
-      if (c.key === "oreos") amt += `, ${Math.round(Math.max(0, r.stock) * 156)} cookies`;
-      if (c.unit === "can") icons = `<span class="amt">${Math.round(units)}</span>`;
-      else {
-        const full = Math.floor(units + 1e-9), part = units - full, show = Math.min(full, 5);
-        for (let i = 0; i < show; i++) icons += pkgSVG(c, 1);
-        if (full > 5) icons += `<span class="more">+${full - 5}</span>`;
-        if (part > 0.06 || units < 0.06) icons += pkgSVG(c, part);
-      }
-      const pct = c.unit !== "can" && units < 1 ? `${Math.round(units * 100)}% of a ${c.key === "brownies" ? "Little Debbie box" : c.unit} left` : amt;
-      const left = r.cover >= 28 ? "4+ weeks" : `${r.cover} night${r.cover === 1 ? "" : "s"}`;
-      return `<div class="good"><div class="pkgs">${icons}</div><div><div class="nm">${esc(c.name)}</div><div class="meta">${esc(pct)}</div></div><div class="right"><span class="pill ${r.incoming > 0 ? "ok" : r.status}">${r.incoming > 0 ? "Ordered" : label[r.status]}</span><span class="meta">${left}</span></div></div>`;
-    }).join("") + `</div></div>`;
-  }
   const cleanPill = { buy: `<span class="pill soon">Buy more</span>`, ordered: `<span class="pill ok">Ordered</span>`, ok: `<span class="pill ok">Fine</span>`, uncounted: "" };
   const cleanRows = (m.sup.clean || []).filter(r => r.status !== "uncounted");
-  if (cleanRows.length) html += `<div class="shelf"><div class="shelf-name">Cleaning</div><div class="goods">${cleanRows.map(r => manualGood(E.BY_KEY[r.key], m, cleanPill[r.status])).join("")}</div></div>`;
-  const unc = rows.filter(r => r.status === "uncounted").concat((m.sup.clean || []).filter(r => r.status === "uncounted"));
+  // Running low first; everything that's fine or already ordered is folded underneath.
+  const low = rows.filter(r => r.status !== "ok" && !(r.incoming > 0)).sort((a, b) => a.cover - b.cover);
+  const cleanLow = cleanRows.filter(r => r.status === "buy");
+  const lowHTML = low.map(pantryGood).join("") + cleanLow.map(r => manualGood(E.BY_KEY[r.key], m, cleanPill[r.status])).join("");
+  let rest = "", restN = 0;
+  for (const [shelf, title] of SHELVES) {
+    const mine = rows.filter(r => E.BY_KEY[r.key].shelf === shelf && !low.includes(r));
+    if (!mine.length) continue;
+    restN += mine.length;
+    rest += `<div class="shelf"><div class="shelf-name">${title}</div><div class="goods">${mine.map(pantryGood).join("")}</div></div>`;
+  }
+  const cleanRest = cleanRows.filter(r => !cleanLow.includes(r));
+  if (cleanRest.length) { restN += cleanRest.length; rest += `<div class="shelf"><div class="shelf-name">Cleaning</div><div class="goods">${cleanRest.map(r => manualGood(E.BY_KEY[r.key], m, cleanPill[r.status])).join("")}</div></div>`; }
+  const unc = m.sup.rows.filter(r => r.status === "uncounted").concat((m.sup.clean || []).filter(r => r.status === "uncounted"));
   el.innerHTML = `<div class="section-head"><h2>Pantry</h2><span class="small muted">Nights each item lasts at a busy pace</span></div>
-    ${html || `<div class="empty">Count your mix-ins once and they show up here, with how full each box or bag is.</div>`}
-    ${unc.length ? `<details class="more"><summary>Not counted yet (${unc.length})</summary><p>${unc.map(r => esc(E.BY_KEY[r.key].name)).join(", ")}. Count them once from the Count button and the app keeps track from then on.</p></details>` : ""}`;
+    ${!rows.length && !cleanRows.length ? `<div class="empty">Count your mix-ins once and they show up here, with how full each box or bag is.</div>`
+      : lowHTML ? `<div class="shelf"><div class="shelf-name">Running low</div><div class="goods">${lowHTML}</div></div>` : `<p class="allgood">Nothing is running low.</p>`}
+    ${rest ? `<details class="more shelves" ${keep("pantry", true)}><summary>${lowHTML ? "Everything else" : "See everything"} (${restN})</summary>${rest}</details>` : ""}
+    ${unc.length ? `<details class="more" ${keep("uncounted")}><summary>Not counted yet (${unc.length})</summary><p>${unc.map(r => esc(E.BY_KEY[r.key].name)).join(", ")}. Count them once from the Count button and the app keeps track from then on.</p></details>` : ""}`;
 }
 function renderWeek(m) {
   const el = $("week"), st = m.st;
@@ -539,7 +584,7 @@ function renderWeek(m) {
   }).join("");
   el.innerHTML = `<div class="section-head"><h2>Next 7 nights</h2><span class="small muted">Tubs in the freezer when each night opens</span></div>
     <div class="week"><div class="plot">${bars}<span class="hline cap" style="bottom:${pct(st.cap)}%"><span>Most ${st.cap}</span></span></div><div class="days">${days}</div></div>
-    <p class="note">The dark tick is where an average night leaves you. The purple tick is that night's floor (${fmtQ(st.floors.sunWed)} Sunday to Wednesday, ${fmtQ(st.floors.thuSat)} Thursday to Saturday). Later deliveries assume each morning's suggested Gordon's order gets placed.</p>`;
+    <p class="note">The dark tick shows where an average night leaves you, and the dotted line is that night's floor. Later days assume each suggested Gordon's order gets placed.</p>`;
 }
 function renderActivity(m) {
   const el = $("activity"), ev = [], byAt = {};
@@ -551,7 +596,8 @@ function renderActivity(m) {
   for (const o of S.data.orders) if (o.reason !== "undo") ev.push({ at: o.placedAt, t: `Ordered from ${SUP[o.supplier]} for ${dayWord(o.arrivesOn, m.cal)}: ${Object.entries(o.lines || {}).filter(([, q]) => q > 0).map(([k, q]) => packWord(k, q)).join(", ")}${o.status === "cancelled" ? (o.reason === "not_coming" ? " (didn't come)" : " (cancelled)") : o.status === "arrived" ? " (arrived)" : ""}` });
   for (const n of (m.st.learnLog || []).slice(-6)) ev.push({ at: n.at, t: n.note });
   ev.sort((a, b) => (a.at < b.at ? 1 : -1));
-  el.innerHTML = `<div class="section-head"><h2>Activity</h2></div>${ev.length ? `<div class="log">${ev.slice(0, 12).map(e => `<div><time>${esc(when(e.at))}</time><span>${esc(e.t)}</span></div>`).join("")}</div>` : `<div class="empty">Counts, orders and deliveries will show up here.</div>`}`;
+  const row = e => `<div><time>${esc(when(e.at))}</time><span>${esc(e.t)}</span></div>`;
+  el.innerHTML = `<div class="section-head"><h1 class="headline">Activity</h1></div>${ev.length ? `<div class="log">${ev.slice(0, 15).map(row).join("")}</div>${ev.length > 15 ? `<details class="more" ${keep("older")}><summary>Older (${Math.min(ev.length, 60) - 15})</summary><div class="log">${ev.slice(15, 60).map(row).join("")}</div></details>` : ""}` : `<div class="empty">Counts, orders and deliveries will show up here.</div>`}`;
 }
 
 // ---------- sheets ----------
@@ -895,6 +941,8 @@ document.addEventListener("click", e => {
     renderSheet(); const b2 = document.querySelector(".sheet .body"); if (b2) b2.scrollTop = top;
     return;
   }
+  const tb = e.target.closest(".tabbtn[data-tab]");
+  if (tb) { setTab(tb.dataset.tab); return; }
   const el = e.target.closest("[data-act]"); if (!el) return;
   const act = el.dataset.act;
   if (act === "scrim" && e.target !== el) return;
@@ -954,6 +1002,7 @@ document.addEventListener("change", e => {
   if (sheet && sheet.kind === "delivery" && e.target.id === "delItem") { sheet.data.item = e.target.value; sheet.data.qty = 1; sheet.data.src = null; renderSheet(); }
   if (sheet && sheet.kind === "delivery" && e.target.id === "delSrc") sheet.data.src = e.target.value;
 });
+document.addEventListener("toggle", e => { const d = e.target; if (d && d.dataset && d.dataset.keep) S.keep[d.dataset.keep] = d.open; }, true);
 document.addEventListener("keydown", e => { if (e.key === "Escape" && sheet) closeSheet(); });
 document.addEventListener("visibilitychange", () => { if (!document.hidden && S.booted && (!S.lastSync || Date.now() - S.lastSync > 5 * 60e3)) syncSquare(false); });
 
@@ -979,7 +1028,7 @@ function wipe() {
   if (Store.signOut) Store.signOut();
   S.data = { settingsDoc: null, counts: [], deliveries: [], orders: [] };
   S.daily = null; S.hourly = null; S.truncated = false; S.lastSync = null;
-  S.booted = false; S.canSave = false; S.syncing = false; S.sq = { state: "loading" }; S.confirmCancel = null;
+  S.booted = false; S.canSave = false; S.syncing = false; S.sq = { state: "loading" }; S.confirmCancel = null; S.tab = "today"; S.keep = {};
 }
 function lockOut(msg) { wipe(); gate(msg); }
 function gate(err) {

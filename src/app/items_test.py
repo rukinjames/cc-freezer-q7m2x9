@@ -37,6 +37,30 @@ class Srv:
                 if k in b["data"]: d["data"][k] = b["data"][k]
             return await route.fulfill(json={"id": b["id"]}, headers=H)
         return await route.fulfill(status=400, json={"error": "bad_request"}, headers=H)
+# ---- tabs (Today, Stock, Activity) ----
+TABOF = {"#freezer": "stock", "#pantry": "stock", "#exclusive": "stock", "#week": "stock", "#tab-stock": "stock", "#activity": "activity", "#today": "today"}
+async def tab(pg, name):
+    for sel in (f".bar-bottom [data-tab={name}]", f".tabs-top [data-tab={name}]"):
+        el = await pg.query_selector(sel)
+        if el and await el.is_visible():
+            await el.click(); await pg.wait_for_timeout(150); return
+async def tin(pg, sel):
+    t = TABOF.get(sel.split(" ")[0])
+    if t: await tab(pg, t)
+    if sel.split(" ")[0] in ("#pantry", "#activity"):   # folded parts count as shown
+        await pg.evaluate("s => document.querySelectorAll(s + ' details').forEach(d => { d.open = true; })", sel.split(" ")[0])
+    return await pg.inner_text(sel)
+async def tdo(pg, sel, **kw):
+    # buttons on the Today tab; folded lists there count as open
+    if not await pg.query_selector(".sheet"):
+        await tab(pg, "today")
+        await pg.evaluate("() => document.querySelectorAll('#today details').forEach(d => { d.open = true; })")
+    return await pg.click(sel, **kw)
+async def tclick(pg, sel, **kw):
+    t = TABOF.get(sel.split(" ")[0])
+    if t: await tab(pg, t)
+    return await pg.click(sel, **kw)
+
 res = []
 def check(name, ok, info=""):
     res.append(ok); print(("PASS " if ok else "FAIL ") + name + (f"  ({info})" if info else ""))
@@ -68,17 +92,17 @@ async def main():
             {"collection": "orders", "id": "o-sams", "data": {"supplier": "sams", "lines": {"oreos": 4, "matcha": 1, "brownies": 2}, "placedAt": "2026-10-14T15:49:40.006Z", "arrivesOn": "2026-10-14", "window": "2 to 4 PM", "windowStart": "14:00", "winFrom": "14:00", "winTo": "16:00", "status": "placed", "pickup": {"text": True, "by": "Cooper Hazday", "alertedAt": "2026-10-14T15:51:00Z"}}},
         ]
         srv = Srv(docs_with(extra)); pg = await page(br, srv, "2026-10-14T19:30:00Z")
-        pan = await pg.inner_text("#pantry")
+        pan = await tin(pg, "#pantry")
         check("Biscoff is in the pantry", "Biscoff" in pan, pan[:300].replace("\n", " | "))
         check("cleaning shelf shows amount and when it was updated", "Cleaning spray" in pan and "1 bottle, updated" in pan and "Cleaning wipes" in pan and "2 packs, updated" in pan, pan[-300:].replace("\n", " | "))
         check("spray at 1 says buy more, wipes at 2 are fine", "Buy more" in pan and "Fine" in pan)
-        sams = await pg.inner_text("#sams")
+        sams = await tin(pg, "#today")
         check("Sam's side says to buy more spray", "spray" in sams.lower(), sams[:300].replace("\n", " | "))
-        exs = await pg.inner_text("#exclusive")
+        exs = await tin(pg, "#exclusive")
         check("delivered chips show before they're counted", "2 bags delivered Wed 2:00 PM, not counted yet" in exs, exs.replace("\n", " | ")[:300])
         check("pantry has no exclusive toppings", "Chips" not in pan and "Pretzels" not in pan)
         # change an order: add something that wasn't listed
-        await pg.click('[data-act=edit-order][data-id="o-sams"]'); await pg.wait_for_timeout(200)
+        await tdo(pg, '[data-act=edit-order][data-id="o-sams"]'); await pg.wait_for_timeout(200)
         opts = await pg.eval_on_selector_all("#addLine option", "els => els.map(e => e.value)")
         check("order picker offers what isn't listed", "chips" in opts and "pretzels" in opts and "reesescups" in opts and "spray" in opts and "oreos" not in opts and "vanilla" not in opts and "exclusive" not in opts, str(opts))
         await pg.select_option("#addLine", "chips"); await pg.wait_for_timeout(150)
@@ -88,10 +112,10 @@ async def main():
         await pg.click("[data-act=save-order]"); await pg.wait_for_timeout(900)
         o = srv.get("orders", "o-sams")["data"]
         check("saved with the new items, pickup untouched", o["lines"] == {"oreos": 4, "matcha": 1, "brownies": 2, "chips": 2, "pretzels": 1} and o["pickup"]["by"] == "Cooper Hazday", str(o))
-        card = await pg.inner_text("#sams")
-        check("order card lists the added items", "Ruffles" in card and "Utz" in card, card[:400].replace("\n", " | "))
+        card = await tin(pg, "#today")
+        check("order card lists the added items", "Chips" in card and "Pretzels" in card, card[:400].replace("\n", " | "))
         # partial arrival: what's still shipping stays on order
-        await pg.click('#sams [data-act=arrived][data-id="o-sams"]'); await pg.wait_for_timeout(200)
+        await tclick(pg, '#today [data-sup=sams] [data-act=arrived][data-id="o-sams"]'); await pg.wait_for_timeout(200)
         check("no rest option when everything came", await pg.query_selector("#restComing") is None)
         await pg.click('.sheet [data-step="-1"][data-id="a-matcha"]'); await pg.click('.sheet [data-step="-1"][data-id="a-pretzels"]'); await pg.wait_for_timeout(100)
         check("lowering something offers to keep the rest on order", await pg.is_checked("#restComing") and "stays on order" in await pg.inner_text(".sheet"))
@@ -102,10 +126,10 @@ async def main():
         check("the rest is a new order on its way, no texts", len(rest) == 1 and rest[0]["data"]["lines"] == {"matcha": 1, "pretzels": 1} and rest[0]["data"]["status"] == "placed" and "pickup" not in rest[0]["data"], str(rest))
         dl = {d["data"]["item"]: d["data"]["qty"] for d in srv.of("deliveries") if d["data"].get("orderId") == "o-sams"}
         check("what came is added to stock in counting units", dl == {"oreos": 4, "brownies": 96, "chips": 2}, str(dl))
-        exs = await pg.inner_text("#exclusive")
+        exs = await tin(pg, "#exclusive")
         check("chips now show 4 bags and pretzels as ordered", "4 bags" in exs and "Ordered" in exs, exs.replace("\n", " | ")[:400])
         # same again, but the rest isn't coming
-        await pg.click(f'#sams [data-act=arrived][data-id="{rest[0]["id"]}"]'); await pg.wait_for_timeout(200)
+        await tclick(pg, f'#today [data-sup=sams] [data-act=arrived][data-id="{rest[0]["id"]}"]'); await pg.wait_for_timeout(200)
         await pg.click('.sheet [data-step="-1"][data-id="a-pretzels"]'); await pg.wait_for_timeout(100)
         await pg.uncheck("#restComing"); await pg.wait_for_timeout(100)
         check("unticking says the rest is dropped", "dropped from the order" in await pg.inner_text(".sheet"))
@@ -129,7 +153,7 @@ async def main():
         bi = [d["data"] for d in srv.of("counts") if d["data"]["item"] == "biscoff"][-1]
         check("cleaning counts are whole bottles", sp["value"] == 3, str(sp))
         check("Biscoff counts in quarter packs", bi["value"] == 1.25, str(bi))
-        pan = await pg.inner_text("#pantry")
+        pan = await tin(pg, "#pantry")
         check("spray back to 3 says fine", "3 bottles, updated" in pan and "Buy more" not in pan, pan[-300:].replace("\n", " | "))
         check("phone: no sideways scroll", await pg.evaluate("() => document.documentElement.scrollWidth <= window.innerWidth"))
         check("no page errors", not pg.errs, str(pg.errs))

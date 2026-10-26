@@ -56,7 +56,10 @@ h3 { font-size: 0.98rem; font-weight: 600; }
 .status { font-size: 0.875rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
 .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); margin-right: 6px; vertical-align: 1px; }
 .dot.ok { background: var(--ok); } .dot.bad { background: var(--now); } .dot.wait { background: var(--soon); }
-.top-actions { display: none; gap: 8px; }
+.top-actions { display: flex; gap: 8px; align-items: center; }
+.wide-only, .tabs-top { display: none; }
+.btn.icon { width: 44px; padding: 0; display: inline-grid; place-items: center; color: var(--muted); }
+.btn.icon svg { width: 22px; height: 22px; }
 
 .btn { cursor: pointer; border: 1px solid var(--rule-strong); background: var(--surface); border-radius: 12px; padding: 10px 16px; min-height: 44px; font-weight: 600; font-size: 0.95rem; }
 .btn:hover { border-color: var(--accent); }
@@ -65,8 +68,29 @@ h3 { font-size: 0.98rem; font-weight: 600; }
 .btn:disabled { opacity: 0.45; cursor: default; }
 :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
 
-.grid { display: flex; flex-direction: column; gap: 30px; }
-.col { display: contents; }
+.tab[hidden] { display: none; }
+.stock-grid { display: flex; flex-direction: column; gap: 30px; }
+.stock-grid .col { display: contents; }
+/* phone: what needs attention comes first */
+#freezer { order: 1; } #pantry { order: 2; } #exclusive { order: 3; } #week { order: 4; }
+.tab-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.headline { font-family: var(--display); font-weight: 500; font-size: 1.6rem; letter-spacing: -0.03em; line-height: 1.15; text-wrap: balance; }
+/* today */
+#today { gap: 12px; }
+.today-head { display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
+.today-head .muted { font-size: 0.9rem; }
+.card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 6px 10px; flex-wrap: wrap; }
+.coming { display: flex; flex-direction: column; gap: 10px; margin-top: 22px; }
+.coming > h2 { font-size: 0.95rem; color: var(--muted); }
+.coming .panel { padding: 16px; gap: 10px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: baseline; gap: 6px; padding: 5px 11px; border-radius: 999px; background: var(--ground); font-size: 0.9rem; line-height: 1.3; }
+.panel.act .chip { background: var(--surface); }
+.chip b { font-family: var(--display); font-weight: 500; font-size: 0.95rem; }
+.logrow { display: flex; flex-direction: column; gap: 2px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--rule); }
+.logrow .actions { gap: 4px 14px; }
+.allgood { color: var(--ok); font-weight: 600; padding: 10px 0; border-top: 1px solid var(--rule); }
+details.shelves[open] summary { margin-bottom: 4px; }
 .section { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 
@@ -166,8 +190,14 @@ details.more p { margin-top: 6px; font-size: 0.9rem; color: var(--muted); }
 .alerts:empty { display: none; }
 
 /* bottom bar (phone) */
-.bar-bottom { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; background: var(--surface); border-top: 1px solid var(--rule); padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px)); display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 8px; }
+.bar-bottom { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; background: var(--surface); border-top: 1px solid var(--rule); padding: 6px 12px calc(8px + env(safe-area-inset-bottom, 0px)); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 1.25fr); gap: 4px; align-items: center; }
 .bar-bottom .btn { width: 100%; padding-inline: 8px; }
+.tabbtn { position: relative; appearance: none; background: transparent; border: 0; border-radius: 12px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 52px; padding: 4px 2px; font-size: 0.76rem; font-weight: 600; color: var(--muted); }
+.tabbtn svg { width: 24px; height: 24px; }
+.tabbtn.on { color: var(--accent); }
+.tabbtn.on::before { content: ""; position: absolute; top: -7px; left: 30%; right: 30%; height: 3px; border-radius: 0 0 3px 3px; background: var(--accent); }
+.badge { position: absolute; top: 3px; left: calc(50% + 7px); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--now); color: var(--surface); font-size: 0.7rem; font-weight: 700; display: inline-grid; place-items: center; line-height: 1; }
+.badge:empty { display: none; }
 
 /* sheets */
 .scrim { position: fixed; inset: 0; background: rgba(12, 8, 26, 0.5); z-index: 10; display: flex; align-items: flex-end; justify-content: center; }
@@ -204,11 +234,20 @@ input[type="number"] { width: 6.5em; font-variant-numeric: tabular-nums; }
 }
 @media (min-width: 960px) {
   .shell { padding-block: 24px 48px; }
-  .top-actions { display: flex; }
+  .wide-only { display: inline-flex; align-items: center; }
+  .narrow-only { display: none; }
   .bar-bottom { display: none; }
-  .grid { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 36px 44px; align-items: start; }
-  .col { display: flex; flex-direction: column; gap: 32px; min-width: 0; }
-  #activity { grid-column: 1 / -1; }
+  .top { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+  .top-actions { justify-content: flex-end; }
+  .tabs-top { display: inline-flex; gap: 4px; padding: 4px; border-radius: 14px; background: var(--surface); border: 1px solid var(--rule); }
+  .tabs-top .tabbtn { flex-direction: row; gap: 8px; min-height: 40px; padding: 8px 18px; font-size: 0.95rem; border-radius: 10px; }
+  .tabs-top .tabbtn.on { background: var(--accent-soft); }
+  .tabs-top .tabbtn.on::before { display: none; }
+  .tabs-top .badge { position: static; }
+  .stock-grid { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 36px 44px; align-items: start; }
+  .stock-grid .col { display: flex; flex-direction: column; gap: 32px; min-width: 0; }
+  #freezer, #pantry, #exclusive, #week { order: 0; }
+  #today, #tab-activity { max-width: 760px; }
   .freezer-well { gap: 12px; padding: 18px; }
   .readout .big { font-size: 3rem; }
 }

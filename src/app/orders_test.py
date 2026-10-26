@@ -27,6 +27,31 @@ async def handle(route):
         return await route.fulfill(json={"id": b["id"]}, headers=H)
     return await route.fulfill(json={"id": "x"}, headers=H)
 orders = lambda: [d for d in docs if d["collection"] == "orders"]
+
+# ---- tabs (Today, Stock, Activity) ----
+TABOF = {"#freezer": "stock", "#pantry": "stock", "#exclusive": "stock", "#week": "stock", "#tab-stock": "stock", "#activity": "activity", "#today": "today"}
+async def tab(pg, name):
+    for sel in (f".bar-bottom [data-tab={name}]", f".tabs-top [data-tab={name}]"):
+        el = await pg.query_selector(sel)
+        if el and await el.is_visible():
+            await el.click(); await pg.wait_for_timeout(150); return
+async def tin(pg, sel):
+    t = TABOF.get(sel.split(" ")[0])
+    if t: await tab(pg, t)
+    if sel.split(" ")[0] in ("#pantry", "#activity"):   # folded parts count as shown
+        await pg.evaluate("s => document.querySelectorAll(s + ' details').forEach(d => { d.open = true; })", sel.split(" ")[0])
+    return await pg.inner_text(sel)
+async def tdo(pg, sel, **kw):
+    # buttons on the Today tab; folded lists there count as open
+    if not await pg.query_selector(".sheet"):
+        await tab(pg, "today")
+        await pg.evaluate("() => document.querySelectorAll('#today details').forEach(d => { d.open = true; })")
+    return await pg.click(sel, **kw)
+async def tclick(pg, sel, **kw):
+    t = TABOF.get(sel.split(" ")[0])
+    if t: await tab(pg, t)
+    return await pg.click(sel, **kw)
+
 res = []
 def check(name, ok, info=""):
     res.append(ok); print(("PASS " if ok else "FAIL ") + name + (f"  ({info})" if info else ""))
@@ -38,45 +63,45 @@ async def main():
         await pg.add_init_script("localStorage.setItem('cc-inventory-passcode','x')")
         await pg.route("https://fn.test/**", handle)
         await pg.goto(f'file://{SP}/ord.html'); await pg.wait_for_timeout(1500)
-        sams = lambda: pg.inner_text("#sams")
+        sams = lambda: tin(pg, "#today")
         check("starts with an order-now card", "Order from Sam's Club" in await sams())
-        await pg.click("[data-act=place-sams]"); await pg.wait_for_timeout(200)
+        await tdo(pg, "[data-act=place-sams]"); await pg.wait_for_timeout(200)
         check("sheet asks to confirm", "Confirm your Sam's Club order" in await pg.inner_text(".sheet"))
         check("arrives defaults to tomorrow after 4 PM", await pg.eval_on_selector("#arrivesSel", "e => e.value") == "2026-10-13")
         await pg.click(".sheet footer [data-act=close]"); await pg.wait_for_timeout(300)
         check("Go back saves nothing", len(orders()) == 0 and "Order from Sam's Club" in await sams() and "order placed" not in await sams())
-        await pg.click("[data-act=place-sams]"); await pg.wait_for_timeout(200)
+        await tdo(pg, "[data-act=place-sams]"); await pg.wait_for_timeout(200)
         await pg.evaluate("() => { const b = document.querySelector('[data-act=save-order]'); b.click(); b.click(); b.click(); }")
         await pg.wait_for_timeout(1200)
         check("triple tap on Save saves exactly one order", len(orders()) == 1, str(len(orders())))
         t = await sams()
-        check("placed order replaces the order-now card", "Sam's Club order placed" in t and "Order from Sam's Club" not in t, t[:90].replace("\n", " | "))
+        check("placed order replaces the order-now card", "Sam's Club delivery" in t and "Order from Sam's Club" not in t, t[:90].replace("\n", " | "))
         check("no 'delivery due today' banner", "due today" not in (await pg.inner_text("body")))
-        check("arrives tomorrow shown", "Arrives tomorrow" in t)
-        pantry = await pg.inner_text("#pantry")
+        check("arrives tomorrow shown", "Tomorrow" in t)
+        pantry = await tin(pg, "#pantry")
         check("pantry marks Oreos as ordered", "Ordered" in pantry)
         toast_txt = await pg.inner_text("#toastRoot")
         check("toast offers Undo", "Undo" in toast_txt, toast_txt)
         await pg.click(".toast-act"); await pg.wait_for_timeout(800)
         check("Undo cancels the order", orders()[0]["data"]["status"] == "cancelled" and orders()[0]["data"].get("reason") == "undo")
         check("order-now card is back after Undo", "Order from Sam's Club" in await sams())
-        await pg.click("[data-act=place-sams]"); await pg.wait_for_timeout(200)
+        await tdo(pg, "[data-act=place-sams]"); await pg.wait_for_timeout(200)
         await pg.click("[data-act=save-order]"); await pg.wait_for_timeout(1000)
         oid = [o for o in orders() if o["data"]["status"] == "placed"][0]["id"]
-        await pg.click(f"#sams [data-act=cancel-order]"); await pg.wait_for_timeout(200)
+        await tclick(pg, "#today [data-sup=sams] [data-act=cancel-order]"); await pg.wait_for_timeout(200)
         check("cancel asks first", "Cancel this order?" in await sams())
         await pg.click("[data-act=keep-order]"); await pg.wait_for_timeout(200)
-        check("Keep it keeps the order", "Sam's Club order placed" in await sams() and [o for o in orders() if o["id"] == oid][0]["data"]["status"] == "placed")
-        await pg.click("#sams [data-act=cancel-order]"); await pg.wait_for_timeout(200)
+        check("Keep it keeps the order", "Sam's Club delivery" in await sams() and [o for o in orders() if o["id"] == oid][0]["data"]["status"] == "placed")
+        await tclick(pg, "#today [data-sup=sams] [data-act=cancel-order]"); await pg.wait_for_timeout(200)
         await pg.click("[data-act=confirm-cancel]"); await pg.wait_for_timeout(800)
         check("Yes, cancel it cancels", [o for o in orders() if o["id"] == oid][0]["data"]["status"] == "cancelled" and "Order from Sam's Club" in await sams())
         # place for today and mark arrived
-        await pg.click("[data-act=place-sams]"); await pg.wait_for_timeout(200)
+        await tdo(pg, "[data-act=place-sams]"); await pg.wait_for_timeout(200)
         await pg.select_option("#arrivesSel", "2026-10-12"); await pg.click("[data-act=save-order]"); await pg.wait_for_timeout(1000)
         t = await sams()
         check("today's order shows It arrived, still no separate banner", "It arrived" in t and "due today" not in (await pg.inner_text("body")))
         n0 = len(adds)
-        await pg.click("#sams [data-act=arrived]"); await pg.wait_for_timeout(200)
+        await tclick(pg, "#today [data-sup=sams] [data-act=arrived]"); await pg.wait_for_timeout(200)
         await pg.evaluate("() => { const b = document.querySelector('[data-act=save-arrive]'); b.click(); b.click(); }")
         await pg.wait_for_timeout(2500)
         dels = [a["data"] for a in adds[n0:] if a["collection"] == "deliveries"]

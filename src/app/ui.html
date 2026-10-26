@@ -8,32 +8,46 @@
           <div class="status" id="status">Loading…</div>
         </div>
       </div>
+      <nav class="tabs-top" aria-label="Sections">
+        <button class="tabbtn" data-tab="today">Today<span class="badge" data-badge></span></button>
+        <button class="tabbtn" data-tab="stock">Stock</button>
+        <button class="tabbtn" data-tab="activity">Activity</button>
+      </nav>
       <div class="top-actions">
-        <button class="btn primary" data-act="open-count">Count</button>
-        <button class="btn" data-act="open-delivery">Add delivery</button>
-        <button class="btn" data-act="open-settings">Settings</button>
+        <button class="btn primary wide-only" data-act="open-count">Count</button>
+        <button class="btn wide-only" data-act="open-delivery">Add delivery</button>
+        <button class="btn icon" data-act="open-settings" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l2-1.5-2-3.4-2.3.9a7.5 7.5 0 0 0-2.6-1.5L14.2 2h-4.4l-.3 3a7.5 7.5 0 0 0-2.6 1.5l-2.3-.9-2 3.4 2 1.5a7.6 7.6 0 0 0 0 3l-2 1.5 2 3.4 2.3-.9a7.5 7.5 0 0 0 2.6 1.5l.3 3h4.4l.3-3a7.5 7.5 0 0 0 2.6-1.5l2.3.9 2-3.4Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></button>
       </div>
     </header>
     <div class="alerts" id="alerts"></div>
-    <div class="grid">
-      <div class="col">
-        <section class="section" id="freezer" style="order:1"><div class="empty">Loading your counts…</div></section>
-        <section class="section" id="pantry" style="order:4"></section>
-        <section class="section" id="exclusive" style="order:5"></section>
-        <section class="section" id="week" style="order:6"></section>
+    <main>
+      <div class="tab" id="tab-today" data-tabpane="today">
+        <section class="section" id="today"><div class="empty">Loading your counts…</div></section>
       </div>
-      <div class="col">
-        <section class="section" id="gordon" style="order:2"></section>
-        <section class="section" id="sams" style="order:3"></section>
+      <div class="tab" id="tab-stock" data-tabpane="stock" hidden>
+        <div class="tab-head"><h1 class="headline">Stock</h1><button class="btn narrow-only" data-act="open-delivery">Add delivery</button></div>
+        <div class="stock-grid">
+          <div class="col">
+            <section class="section" id="freezer"></section>
+            <section class="section" id="week"></section>
+            <section class="section" id="exclusive"></section>
+          </div>
+          <div class="col">
+            <section class="section" id="pantry"></section>
+          </div>
+        </div>
       </div>
-      <section class="section" id="activity" style="order:7"></section>
-    </div>
-    <p class="foot">Not tracked here: Nutella, cups and Dairy Free. Exclusive toppings and cleaning supplies change only when you count them or a delivery comes in. Square sales arrive about every 15 minutes. Servings per tub and mix-in amounts adjust a little with every count.</p>
+      <div class="tab" id="tab-activity" data-tabpane="activity" hidden>
+        <section class="section" id="activity"></section>
+        <p class="foot">Not tracked here: Nutella, cups and Dairy Free. Exclusive toppings and cleaning supplies change only when you count them or a delivery comes in. Square sales arrive about every 15 minutes. Servings per tub and mix-in amounts adjust a little with every count.</p>
+      </div>
+    </main>
   </div>
-  <nav class="bar-bottom" aria-label="Actions">
+  <nav class="bar-bottom" aria-label="Sections">
+    <button class="tabbtn" data-tab="today"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4 4 10-10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Today</span><span class="badge" data-badge></span></button>
+    <button class="tabbtn" data-tab="stock"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4 11h16M10 7.5h4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span>Stock</span></button>
+    <button class="tabbtn" data-tab="activity"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Activity</span></button>
     <button class="btn primary" data-act="open-count">Count</button>
-    <button class="btn" data-act="open-delivery">Delivery</button>
-    <button class="btn" data-act="open-settings">Settings</button>
   </nav>
 </div>
 <div id="sheetRoot"></div>

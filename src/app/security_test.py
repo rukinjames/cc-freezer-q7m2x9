@@ -27,7 +27,7 @@ async def handle(route):
     return await route.fulfill(json={"id": "x"}, headers=H)
 
 LEAK_JS = """() => ({ app: !!document.getElementById('freezer') || !!document.getElementById('shell'),
-  data: document.body.innerText.includes('10½') || document.body.innerText.includes('3½'),
+  data: ((document.getElementById('root') || {}).textContent || '').includes('10½') || ((document.getElementById('root') || {}).textContent || '').includes('3½'),
   gate: !!document.getElementById('gateForm') })"""
 async def watch(pg, ms):
     seen = {"app": False, "data": False}
@@ -54,11 +54,11 @@ async def main():
         check("wrong passcode is not remembered", await pg.evaluate("localStorage.getItem('cc-inventory-passcode')") is None)
         check("wrong passcode shows an error", "didn't work" in (await pg.inner_text("body")))
         await submit(pg, GOOD); await pg.wait_for_timeout(1500)
-        check("right passcode opens the app with data", "10½" in (await pg.inner_text("body")))
+        check("right passcode opens the app with data", await pg.is_visible("#shell") and "10½" in await pg.evaluate("() => document.getElementById('freezer').textContent"))
         await pg.reload(); seen = await watch(pg, 1200)
-        check("after reload it remembers you (no passcode screen)", (await pg.query_selector("#gateForm")) is None and "10½" in (await pg.inner_text("body")))
+        check("after reload it remembers you (no passcode screen)", (await pg.query_selector("#gateForm")) is None and await pg.is_visible("#shell") and "10½" in await pg.evaluate("() => document.getElementById('freezer').textContent"))
         # sign out from Settings
-        await pg.click(".bar-bottom [data-act=open-settings]"); await pg.wait_for_timeout(200)
+        await pg.click(".top [data-act=open-settings]"); await pg.wait_for_timeout(200)
         await pg.click("[data-act=signout]"); await pg.wait_for_timeout(300)
         check("sign out shows the passcode screen", await pg.is_visible("#gateForm"))
         check("sign out forgets the passcode", await pg.evaluate("localStorage.getItem('cc-inventory-passcode')") is None)

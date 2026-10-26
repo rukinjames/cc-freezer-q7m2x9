@@ -37,6 +37,31 @@ class Srv:
                 if k in b["data"]: d["data"][k] = b["data"][k]
             return await route.fulfill(json={"id": b["id"]}, headers=H)
         return await route.fulfill(status=400, json={"error": "bad_request"}, headers=H)
+
+# ---- tabs (Today, Stock, Activity) ----
+TABOF = {"#freezer": "stock", "#pantry": "stock", "#exclusive": "stock", "#week": "stock", "#tab-stock": "stock", "#activity": "activity", "#today": "today"}
+async def tab(pg, name):
+    for sel in (f".bar-bottom [data-tab={name}]", f".tabs-top [data-tab={name}]"):
+        el = await pg.query_selector(sel)
+        if el and await el.is_visible():
+            await el.click(); await pg.wait_for_timeout(150); return
+async def tin(pg, sel):
+    t = TABOF.get(sel.split(" ")[0])
+    if t: await tab(pg, t)
+    if sel.split(" ")[0] in ("#pantry", "#activity"):   # folded parts count as shown
+        await pg.evaluate("s => document.querySelectorAll(s + ' details').forEach(d => { d.open = true; })", sel.split(" ")[0])
+    return await pg.inner_text(sel)
+async def tdo(pg, sel, **kw):
+    # buttons on the Today tab; folded lists there count as open
+    if not await pg.query_selector(".sheet"):
+        await tab(pg, "today")
+        await pg.evaluate("() => document.querySelectorAll('#today details').forEach(d => { d.open = true; })")
+    return await pg.click(sel, **kw)
+async def tclick(pg, sel, **kw):
+    t = TABOF.get(sel.split(" ")[0])
+    if t: await tab(pg, t)
+    return await pg.click(sel, **kw)
+
 res = []
 def check(name, ok, info=""):
     res.append(ok); print(("PASS " if ok else "FAIL ") + name + (f"  ({info})" if info else ""))
@@ -75,11 +100,11 @@ async def main():
         items = {d["item"]: d for d in new}
         check("count: exactly the touched rows saved", set(items) == {"vanilla", "chocolate", "brownies"}, str(sorted(items)))
         check("count: brownie split saved", "detail" in items.get("brownies", {}) and items["brownies"]["value"] == items["brownies"]["detail"]["ld"] * 48 + items["brownies"]["detail"]["loose"])
-        fr = await pg.inner_text("#freezer")
+        fr = await tin(pg, "#freezer")
         check("count: freezer shows the new chocolate count", ("Counted " + (await pg.evaluate("v => v", None) or "")) is not None and "Counted" in fr)
         # ---------- delivery ----------
         n_del = len(srv.of("deliveries"))
-        await pg.click(".bar-bottom [data-act=open-delivery]"); await pg.wait_for_timeout(200)
+        await tclick(pg, "#tab-stock [data-act=open-delivery]"); await pg.wait_for_timeout(200)
         await pg.select_option("#delItem", "strawberries"); await pg.wait_for_timeout(100)
         await pg.select_option("#delSrc", "other"); await step(pg, "del", 2, 1)
         src_after = await pg.eval_on_selector("#delSrc", "e => e.value"); qty = await pg.inner_text("#v-del")
@@ -88,14 +113,14 @@ async def main():
         await pg.click("[data-act=save-delivery]"); await pg.wait_for_timeout(800)
         dl = srv.of("deliveries")[n_del:]
         check("delivery: saved once with item, qty and source", len(dl) == 1 and dl[0]["data"]["item"] == "strawberries" and dl[0]["data"]["qty"] == 1.5 and dl[0]["data"]["source"] == "other", str([d["data"] for d in dl]))
-        pantry = await pg.inner_text("#pantry")
+        pantry = await tin(pg, "#pantry")
         check("delivery: pantry reflects it", "Strawberries" in pantry)
-        await pg.click(".bar-bottom [data-act=open-delivery]"); await pg.wait_for_timeout(200)
+        await tclick(pg, "#tab-stock [data-act=open-delivery]"); await pg.wait_for_timeout(200)
         await pg.select_option("#delItem", "coke"); await step(pg, "del", 3, 1)
         check("delivery: cans step by whole numbers", await pg.inner_text("#v-del") == "4")
         await pg.click(".sheet footer [data-act=close]")
         # ---------- settings ----------
-        await pg.click(".bar-bottom [data-act=open-settings]"); await pg.wait_for_timeout(200)
+        await pg.click(".top [data-act=open-settings]"); await pg.wait_for_timeout(200)
         vals = {"#s-cap": "17", "#s-fsw": "5.5", "#s-fts": "9", "#s-gmin": "80", "#s-smin": "45", "#s-cover": "12", "#s-yv": "21.5", "#s-yc": "24", "#s-ye": "20"}
         for sel, v in vals.items(): await pg.fill(sel, v)
         await pg.fill("#s-c1", "09:15"); await pg.fill("#s-c2", "12:45")
@@ -109,11 +134,11 @@ async def main():
               and sd["supplies"]["coverTo"] == 12 and sd["yields"] == {"vanilla": 21.5, "chocolate": 24, "exclusive": 20}
               and [w["cutoff"] for w in sd["gordon"]["windows"]] == ["09:15", "12:45"] and sd["closedDates"] == ["2026-11-26"])
         check("settings: every field saved", ok, json.dumps({k: sd.get(k) for k in ["cap", "floors", "gordon", "supplies", "yields", "closedDates"]})[:300])
-        await pg.click(".bar-bottom [data-act=open-settings]"); await pg.wait_for_timeout(200)
+        await pg.click(".top [data-act=open-settings]"); await pg.wait_for_timeout(200)
         check("settings: reopened form shows saved values", await pg.input_value("#s-cap") == "17" and await pg.input_value("#s-c1") == "09:15" and "Nov 26" in await pg.inner_text(".sheet"))
         await pg.fill("#s-cap", "3"); await pg.click(".sheet footer [data-act=close]"); await pg.wait_for_timeout(200)
         check("settings: Cancel discards", srv.get("config", "settings")["data"]["cap"] == 17)
-        await pg.click(".bar-bottom [data-act=open-settings]"); await pg.wait_for_timeout(200)
+        await pg.click(".top [data-act=open-settings]"); await pg.wait_for_timeout(200)
         await pg.fill("#s-cap", ""); await pg.fill("#s-fsw", "-4"); await pg.click("[data-act=save-settings]"); await pg.wait_for_timeout(600)
         sd = srv.get("config", "settings")["data"]
         check("settings: blank/negative input keeps the old value", sd["cap"] == 17 and sd["floors"]["sunWed"] == 5.5, f'cap {sd["cap"]} floor {sd["floors"]["sunWed"]}')
@@ -123,10 +148,10 @@ async def main():
         # ---------- exclusive ----------
         async def toast_text():
             return await pg.evaluate("() => (document.querySelector('#toastRoot') || {}).innerText || ''")
-        exs = await pg.inner_text("#exclusive")
+        exs = await tin(pg, "#exclusive")
         check("exclusive: own section with toppings, no flavors yet", "No exclusive flavor yet" in exs and all(t in exs for t in ["Chips", "Pretzels", "Reese's cups"]), exs[:200].replace("\n", " | "))
         check("exclusive: freezer no longer has its own button", await pg.query_selector("#freezer [data-act=open-exclusive]") is None)
-        await pg.click("#exclusive [data-act=open-exclusive]"); await pg.wait_for_timeout(200)
+        await tclick(pg, "#exclusive [data-act=open-exclusive]"); await pg.wait_for_timeout(200)
         await pg.click("[data-act=add-flavor]"); await pg.wait_for_timeout(100)
         check("exclusive: refuses an empty name", "Type the new flavor" in await toast_text() and await pg.query_selector("#xs-0") is None)
         await pg.fill("#x-new", "Mint Chip"); await pg.click("[data-act=add-flavor]"); await pg.wait_for_timeout(100)
@@ -143,11 +168,11 @@ async def main():
         chips = [c for c in cs if c["item"] == "chips"]
         check("exclusive: flavors saved with menu state", [(f["name"], f["serving"]) for f in fl] == [("Mint Chip", True), ("Moose Tracks", False)] and all(f["since"] for f in fl), str(fl))
         check("exclusive: counts saved per flavor and topping", mint and mint[-1]["value"] == 2.25 and moose and moose[-1]["value"] == 1 and chips and chips[-1]["value"] == 2 and mint[-1]["at"] >= fl[0]["since"], f"{mint} {moose} {chips}")
-        exs = await pg.inner_text("#exclusive")
+        exs = await tin(pg, "#exclusive")
         check("exclusive: section shows flavors, menu state, nights and toppings", "Mint Chip" in exs and "On the menu" in exs and "night" in exs and "Moose Tracks" in exs and "Not on the menu" in exs and "2 bags, updated" in exs and "Never reordered" in exs, exs.replace("\n", " | ")[:400])
-        fr = await pg.inner_text("#freezer")
+        fr = await tin(pg, "#freezer")
         check("exclusive: freezer counts both flavors' tubs", "Mint Chip" in fr and "Moose Tracks" in fr and "Exclusive" in fr, fr[-200:].replace("\n", " | "))
-        g = await pg.inner_text("#gordon")
+        g = await tin(pg, "#today")
         check("exclusive: Gordon's never lists it", "Mint Chip" not in g and "Moose" not in g and "Exclusive" not in g)
         await pg.click(".bar-bottom [data-act=open-count]"); await pg.wait_for_timeout(200)
         cnt = await pg.inner_text(".sheet")
@@ -156,19 +181,19 @@ async def main():
         await step(pg, "fx1", 1, 1); await pg.click("[data-act=save-count]"); await pg.wait_for_timeout(900)
         moose2 = [d["data"] for d in srv.of("counts") if d["data"]["item"] == "exclusive" and d["data"].get("name") == "Moose Tracks"]
         check("exclusive: counting a flavor from Count saves it by name", moose2[-1]["value"] == 1.25, str(moose2[-1]))
-        await pg.click("#exclusive [data-act=open-exclusive]"); await pg.wait_for_timeout(200)
+        await tclick(pg, "#exclusive [data-act=open-exclusive]"); await pg.wait_for_timeout(200)
         v0, v1 = await pg.inner_text("#v-xf0"), await pg.inner_text("#v-xf1")
         check("exclusive: reopens with each flavor's tubs", v0 == "2¼" and v1 == "1¼", f"{v0} {v1}")
         await step(pg, "xf0", 1, -1); await pg.click("[data-act=save-exclusive]"); await pg.wait_for_timeout(900)
         fl2 = srv.get("config", "settings")["data"]["exclusives"]
-        check("exclusive: changing tubs keeps the same flavor", fl2[0]["since"] == fl[0]["since"] and "2" in await pg.inner_text("#exclusive"))
-        await pg.click("#exclusive [data-act=open-exclusive]"); await pg.wait_for_timeout(200)
+        check("exclusive: changing tubs keeps the same flavor", fl2[0]["since"] == fl[0]["since"] and "2" in await tin(pg, "#exclusive"))
+        await tclick(pg, "#exclusive [data-act=open-exclusive]"); await pg.wait_for_timeout(200)
         await pg.click('[data-act=rm-flavor][data-i="1"]'); await pg.wait_for_timeout(100); await pg.click("[data-act=save-exclusive]"); await pg.wait_for_timeout(900)
-        check("exclusive: removing a flavor drops it", [f["name"] for f in srv.get("config", "settings")["data"]["exclusives"]] == ["Mint Chip"] and "Moose Tracks" not in await pg.inner_text("#exclusive"))
+        check("exclusive: removing a flavor drops it", [f["name"] for f in srv.get("config", "settings")["data"]["exclusives"]] == ["Mint Chip"] and "Moose Tracks" not in await tin(pg, "#exclusive"))
         await pg.clock.set_fixed_time("2026-10-14T19:45:00Z")
-        await pg.click("#exclusive [data-act=open-exclusive]"); await pg.wait_for_timeout(200)
+        await tclick(pg, "#exclusive [data-act=open-exclusive]"); await pg.wait_for_timeout(200)
         await pg.fill("#x-new", "Moose Tracks"); await pg.click("[data-act=save-exclusive]"); await pg.wait_for_timeout(900)
-        exs = await pg.inner_text("#exclusive")
+        exs = await tin(pg, "#exclusive")
         check("exclusive: a flavor added again starts fresh (old tubs ignored)", "Moose Tracks" in exs and "Not counted yet" in exs, exs.replace("\n", " | ")[:300])
         check("exclusive: two on the menu explains the split", "split evenly" in exs)
         check("no page errors (phone)", not pg.errs, str(pg.errs))
@@ -179,20 +204,20 @@ async def main():
         low.append({"collection": "counts", "id": "ex1", "data": {"at": "2026-10-14T12:00:00.000Z", "item": "exclusive", "value": 3}})
         cfg = [d for d in low if d["collection"] == "config"][0]; cfg["data"] = merge(cfg["data"], {"exclusive": {"active": True, "name": "Mint", "since": "2026-10-14T11:00:00.000Z"}})
         srv = Srv(low); pg = await page(br, srv, "2026-10-14T13:00:00Z")
-        g = await pg.inner_text("#gordon")
+        g = await tin(pg, "#today")
         check("gordon: low stock in the morning says to order", "Order from Gordon's" in g, g[:80].replace("\n", " | "))
         check("gordon: no exclusive and no zero lines", "Mint" not in g and "\n0\n" not in g)
-        fr = await pg.inner_text("#freezer"); m = await pg.evaluate("() => document.querySelector('#gordon').innerText")
-        await pg.click("[data-act=place-gordon]"); await pg.wait_for_timeout(200)
+        fr = await tin(pg, "#freezer"); m = await tin(pg, "#today")
+        await tdo(pg, "[data-act=place-gordon]"); await pg.wait_for_timeout(200)
         sheet_t = await pg.inner_text(".sheet")
         check("gordon: confirm sheet", "Confirm your Gordon's order" in sheet_t and "Mint" not in sheet_t, sheet_t[:120].replace("\n", " | "))
         await pg.evaluate("() => { const b = document.querySelector('[data-act=save-order]'); b.click(); b.click(); }"); await pg.wait_for_timeout(1000)
         check("gordon: one order saved", len([o for o in srv.of("orders") if o["data"]["status"] == "placed"]) == 1)
-        g = await pg.inner_text("#gordon")
-        check("gordon: card becomes 'order is in' with actions", "order is in" in g and "It arrived" in g and "Cancel order" in g, g[:90].replace("\n", " | "))
+        g = await tin(pg, "#today")
+        check("gordon: card becomes a delivery card with actions", "Gordon's delivery" in g and "It arrived" in g and "Cancel order" in g, g[:90].replace("\n", " | "))
         check("gordon: no duplicate due banner", (await pg.inner_text("body")).count("delivery due today") == 0)
         o = [o for o in srv.of("orders") if o["data"]["status"] == "placed"][0]
-        await pg.click("#gordon [data-act=arrived]"); await pg.wait_for_timeout(200)
+        await tclick(pg, "#today [data-sup=gordon] [data-act=arrived]"); await pg.wait_for_timeout(200)
         await pg.click("[data-act=save-arrive]"); await pg.wait_for_timeout(1000)
         dl = [d["data"] for d in srv.of("deliveries") if d["data"].get("orderId") == o["id"]]
         check("gordon: arrival adds the tubs", sum(d["qty"] for d in dl) == sum(o["data"]["lines"].values()) and srv.get("orders", o["id"])["data"]["status"] == "arrived", str(dl))
@@ -203,7 +228,7 @@ async def main():
         await pg.click("[data-act=refresh]"); await pg.wait_for_timeout(800)
         check("update: re-reads Square", srv.log.count("sales") > n_sales)
         if await pg.query_selector("[data-act=copy-sams]"):
-            await pg.click("[data-act=copy-sams]"); await pg.wait_for_timeout(300)
+            await tdo(pg, "[data-act=copy-sams]"); await pg.wait_for_timeout(300)
             body = await pg.inner_text("body")
             check("copy: copies or shows the copy sheet", "Copied" in body or "Copy this" in body)
         wide = await pg.evaluate("() => document.documentElement.scrollWidth <= window.innerWidth")
